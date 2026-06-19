@@ -1,0 +1,83 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && request.auth.token.role == 'admin';
+    }
+
+    function isWorker() {
+      return isSignedIn() && request.auth.token.role == 'worker';
+    }
+
+    function isFinance() {
+      return isSignedIn() && request.auth.token.role == 'finance';
+    }
+
+    // USERS
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isAdmin() || request.auth.uid == userId;
+      allow update: if isAdmin() || request.auth.uid == userId;
+      allow delete: if isAdmin();
+    }
+
+    // COMPANIES
+    match /companies/{companyId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+
+      // REFERENCES SUBCOLLECTION
+      match /references/{refId} {
+
+        // READ
+        allow read: if isAdmin() ||
+                     (isWorker() &&
+                      resource.data.assignedTo == request.auth.uid);
+
+        // CREATE: admin only (import can be handled by Cloud Functions)
+        allow create: if isAdmin();
+
+        // UPDATE: admin or assigned worker
+        allow update: if isAdmin() ||
+                      (isWorker() &&
+                       resource.data.assignedTo == request.auth.uid);
+
+        // DELETE
+        allow delete: if isAdmin();
+
+        // AUDIT LOGS
+        match /audit/{auditId} {
+          allow read: if isAdmin() ||
+                       (isWorker() &&
+                        get(/databases/$(database)/documents/companies/$(companyId)/references/$(refId)).data.assignedTo == request.auth.uid);
+
+          allow create: if isAdmin() ||
+                         (isWorker() &&
+                          get(/databases/$(database)/documents/companies/$(companyId)/references/$(refId)).data.assignedTo == request.auth.uid);
+
+          allow update, delete: if isAdmin();
+        }
+      }
+    }
+
+    // REFERENCE SUMMARY (ADMIN ONLY)
+    match /referencesSummary/{summaryId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // BILLING
+    match /billing/{billingId} {
+      allow read: if isAdmin() || isFinance();
+      allow create: if isAdmin();
+      allow update, delete: if isAdmin();
+    }
+  }
+}
