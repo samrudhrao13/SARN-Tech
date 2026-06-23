@@ -22,6 +22,10 @@ export default function BatchTasks() {
 
     const [languages, setLanguages] =
     useState([]);
+
+    const [sheet, setSheet] = useState("");
+    const [sheets, setSheets] = useState([]);
+
     const [searchRepo, setSearchRepo] =
   useState("");
 
@@ -32,7 +36,7 @@ export default function BatchTasks() {
 
   useEffect(() => {
   loadTasks();
-}, [page, language]);
+}, [page, language, sheet]);
 
   async function loadTasks() {
     try {
@@ -44,6 +48,7 @@ export default function BatchTasks() {
             page,
             pageSize,
             language,
+            sheet,
             },
                 }
             );
@@ -53,6 +58,10 @@ export default function BatchTasks() {
 
   setLanguages(
     res.data.languages || []
+  );
+
+  setSheets(
+    res.data.sheets || []
   );
 
   setTotal(
@@ -132,8 +141,32 @@ export default function BatchTasks() {
         <div
   style={{
     marginBottom: 20,
+    display: "flex",
+    gap: 10,
+    flexWrap: "wrap",
+    alignItems: "center",
   }}
 >
+  <select
+    value={sheet}
+    onChange={e => {
+      setSheet(e.target.value);
+      setPage(1);
+    }}
+    style={{
+      padding: "8px 12px",
+      border: "1px solid #ccc",
+      borderRadius: "6px",
+      fontWeight: 600,
+      minWidth: 180,
+    }}
+  >
+    <option value="">All Sheets</option>
+    {sheets.map(s => (
+      <option key={s} value={s}>{s}</option>
+    ))}
+  </select>
+
   <select
     value={language}
     onChange={e => {
@@ -141,6 +174,12 @@ export default function BatchTasks() {
         e.target.value
       );
       setPage(1);
+    }}
+    style={{
+      padding: "8px 12px",
+      border: "1px solid #ccc",
+      borderRadius: "6px",
+      minWidth: 150,
     }}
   >
     <option value="">

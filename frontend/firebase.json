@@ -1,5 +1,6 @@
 {
   "hosting": {
+    "site": "sarn-technologies-21d6e",
     "public": "dist",
     "ignore": [
       "firebase.json",

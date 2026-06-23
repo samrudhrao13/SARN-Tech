@@ -1,5 +1,7 @@
 console.log("🔥🔥🔥 SARN SERVER.JS LOADED 🔥🔥🔥", __filename);
 
+require("dotenv").config();
+
 // ================== IMPORTS ==================
 const express = require("express");
 const cors = require("cors");
@@ -3323,10 +3325,19 @@ app.post("/batch/upload", upload.single("file"), async (req, res) => {
     const ws =
       workbook.Sheets[workbook.SheetNames[0]];
 
-    const rows =
+    const rawRows =
       XLSX.utils.sheet_to_json(ws, {
         defval: "",
       });
+
+    // Trim whitespace from all column headers so "Chemical Name " matches "Chemical Name"
+    const rows = rawRows.map(row => {
+      const clean = {};
+      for (const [k, v] of Object.entries(row)) {
+        clean[k.trim()] = v;
+      }
+      return clean;
+    });
 
     if (!rows.length) {
       return res.json({
@@ -3339,7 +3350,7 @@ const duplicateRepos = new Set();
 
 rows.forEach(row => {
   const repo = String(
-    row["New Repository"] || ""
+    row["Repository No."] || row["New Repository"] || ""
   ).trim();
 
   if (!repo) return;
@@ -3371,7 +3382,7 @@ let ops = 0;
     for (let index = 0; index < rows.length; index++) {
   const row = rows[index];
   const repositoryNo = String(
-  row["New Repository"] || ""
+  row["Repository No."] || row["New Repository"] || ""
 ).trim();
 
 const isDuplicate =
@@ -3443,13 +3454,28 @@ const siteSdsLink =
             row["Status (PDF QC Status)"] || "",
 
           newRepository:
-            row["New Repository"] || "",
+            row["Repository No."] || row["New Repository"] || "",
 
           productCode:
             row["Product Code"] || "",
 
           pdfFileName:
             row["PDF File Name"] || "",
+
+          qcCompleteBy:
+            row["QC Complete By"] || "",
+
+          searchVerificationAction:
+            row["Search Verification Action"] || "",
+
+          emailWebsite:
+            row["Email Address / Website"] || row["Email Address/ Website"] || row["Email Address/Website"] || "",
+
+          searchCompletedBy:
+            row["Search Completed By"] || "",
+
+          comments:
+            row["Comments"] || "",
         },
 
         verification: {
@@ -3569,15 +3595,57 @@ app.get("/batch/sheets", async (req, res) => {
 
     manufacturerName:
       d.common?.manufacturerName || "",
-    
-    language:
-    d.common?.language || "",
+
+    revisionDate:
+      d.common?.revisionDate || "",
+
+    siteApprovalStatus:
+      d.common?.siteApprovalStatus || "",
 
     siteName:
       d.common?.siteName || "",
 
-    revisionDate:
-      d.common?.revisionDate || "",
+    siteSdsNumber:
+      d.common?.siteSdsNumber || "",
+
+    siteSdsLink:
+      d.common?.siteSdsLink || "",
+
+    manufacturerCountry:
+      d.common?.manufacturerCountry || "",
+
+    language:
+      d.common?.language || "",
+
+    verifiedDate:
+      d.common?.verifiedDate || "",
+
+    pdfUploaded:
+      d.common?.pdfUploaded || "",
+
+    pdfQcStatus:
+      d.common?.pdfQcStatus || "",
+
+    productCode:
+      d.common?.productCode || "",
+
+    pdfFileName:
+      d.common?.pdfFileName || "",
+
+    qcCompleteBy:
+      d.common?.qcCompleteBy || "",
+
+    searchVerificationAction:
+      d.common?.searchVerificationAction || "",
+
+    emailWebsite:
+      d.common?.emailWebsite || "",
+
+    searchCompletedBy:
+      d.common?.searchCompletedBy || "",
+
+    comments:
+      d.common?.comments || "",
 
     status:
       d.workflowStatus || "ASSIGN_PENDING",
@@ -3955,9 +4023,14 @@ const language =
   String(req.query.language || "")
     .trim();
 
+const sheetFilter =
+  String(req.query.sheet || "")
+    .trim()
+    .toUpperCase();
+
 const allTasks = [];
-const languageSet =
-  new Set();
+const languageSet = new Set();
+const sheetSet = new Set();
 
     const sheets =
       await db.collection("batch_sheets").get();
@@ -3975,6 +4048,8 @@ const languageSet =
     d.verification?.assignedTo?.toUpperCase() ===
     userId
   ) {
+    // Track all sheets this user has tasks in
+    sheetSet.add(sheetDoc.id);
 
     // Collect only this user's languages
     if (d.common?.language) {
@@ -3982,6 +4057,11 @@ const languageSet =
         d.common.language
       );
     }
+          // Sheet filter
+          if (sheetFilter && sheetDoc.id !== sheetFilter) {
+            return;
+          }
+
           // Language filter
           if (
             language &&
@@ -4070,6 +4150,9 @@ const languageSet =
       tasks,
       languages:
         [...languageSet].sort(),
+
+      sheets:
+        [...sheetSet].sort(),
 
       counts: {
         assigned,
@@ -4255,6 +4338,1228 @@ const paginatedRows =
     res.status(500).json({
       ok: false,
     });
+  }
+});
+
+// ================== CHAT / ADMIN ASSISTANT ==================
+
+const chatUpload = multer({ storage: multer.memoryStorage() });
+
+async function callGroq(systemPrompt, userMessage) {
+  const GROQ_API_KEY = process.env.GROQ_API_KEY;
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${GROQ_API_KEY}` },
+    body: JSON.stringify({
+      model: "llama-3.3-70b-versatile",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userMessage },
+      ],
+      max_tokens: 1024,
+    }),
+  });
+  const data = await response.json();
+  if (data.error) throw new Error(`Groq: ${data.error.message || JSON.stringify(data.error)}`);
+  if (!data.choices?.[0]?.message?.content) throw new Error("Groq returned an empty response");
+  return { reply: data.choices[0].message.content, usage: data.usage || null };
+}
+
+// Fetch date-filtered activity stats from batch_sheets
+async function fetchPeriodStats(fromDate, toDate, userMap) {
+  const batchSheetsSnap = await db.collection("batch_sheets").get();
+  const sheetData = {};
+  const userStats = {};
+  let totalAssigned = 0, totalCompleted = 0;
+
+  for (const sheetDoc of batchSheetsSnap.docs) {
+    const sheetId = sheetDoc.id;
+    const recsSnap = await db.collection("batch_sheets").doc(sheetId).collection("records").get();
+    const sheetInfo = { assigned: 0, completed: 0 };
+
+    recsSnap.forEach(doc => {
+      const d = doc.data();
+      const assignedTo = d.verification?.assignedTo || null;
+      const assignedAt = d.verification?.assignedAt?.toDate ? d.verification.assignedAt.toDate() : null;
+      const completedAt = d.verification?.completedAt?.toDate ? d.verification.completedAt.toDate() : null;
+
+      if (assignedAt && assignedAt >= fromDate && assignedAt <= toDate) {
+        sheetInfo.assigned++; totalAssigned++;
+        if (assignedTo) {
+          if (!userStats[assignedTo]) userStats[assignedTo] = { name: userMap[assignedTo] || assignedTo, assigned: 0, completed: 0 };
+          userStats[assignedTo].assigned++;
+        }
+      }
+      if (completedAt && completedAt >= fromDate && completedAt <= toDate) {
+        sheetInfo.completed++; totalCompleted++;
+        if (assignedTo) {
+          if (!userStats[assignedTo]) userStats[assignedTo] = { name: userMap[assignedTo] || assignedTo, assigned: 0, completed: 0 };
+          userStats[assignedTo].completed++;
+        }
+      }
+    });
+
+    if (sheetInfo.assigned > 0 || sheetInfo.completed > 0) sheetData[sheetId] = sheetInfo;
+  }
+
+  return {
+    totalAssigned, totalCompleted,
+    totalPending: Math.max(0, totalAssigned - totalCompleted),
+    sheets: sheetData,
+    users: Object.entries(userStats)
+      .map(([id, s]) => ({ userId: id, ...s, pending: Math.max(0, s.assigned - s.completed) }))
+      .sort((a, b) => b.assigned - a.assigned),
+  };
+}
+
+// Fetch complete live snapshot from Firestore (batch + users)
+async function fetchSARNContext() {
+  const [batchSheetsSnap, usersSnap] = await Promise.all([
+    db.collection("batch_sheets").get(),
+    db.collection("users").get(),
+  ]);
+
+  const userMap = {};
+  const users = [];
+  usersSnap.docs.forEach(d => {
+    const u = d.data();
+    const name = u.name || u.email || d.id;
+    userMap[d.id] = name;
+    users.push({ id: d.id, name, email: u.email || "", role: u.role || "user" });
+  });
+
+  const sheets = {};
+  const userStats = {};
+  let grandTotal = 0, grandAssigned = 0, grandInProgress = 0, grandBillingReady = 0, grandCompleted = 0, grandUnassigned = 0;
+
+  for (const sheetDoc of batchSheetsSnap.docs) {
+    const sheetId = sheetDoc.id;
+    const recsSnap = await db.collection("batch_sheets").doc(sheetId).collection("records").get();
+
+    const s = { total: 0, unassigned: 0, inProgress: 0, billingReady: 0, completed: 0 };
+
+    recsSnap.forEach(doc => {
+      const d = doc.data();
+      const status = d.workflowStatus || "ASSIGN_PENDING";
+      const assignedTo = d.verification?.assignedTo || null;
+      s.total++;
+      grandTotal++;
+
+      if (status === "ASSIGN_PENDING") { s.unassigned++; grandUnassigned++; }
+      else if (status === "IN_PROGRESS") { s.inProgress++; grandInProgress++; grandAssigned++; }
+      else if (status === "BILLING_READY") { s.billingReady++; grandBillingReady++; grandAssigned++; }
+      else if (status === "COMPLETED") { s.completed++; grandCompleted++; grandAssigned++; }
+
+      if (assignedTo && status !== "ASSIGN_PENDING") {
+        if (!userStats[assignedTo]) userStats[assignedTo] = { name: userMap[assignedTo] || assignedTo, assigned: 0, inProgress: 0, billingReady: 0, completed: 0 };
+        userStats[assignedTo].assigned++;
+        if (status === "IN_PROGRESS") userStats[assignedTo].inProgress++;
+        if (status === "BILLING_READY") userStats[assignedTo].billingReady++;
+        if (status === "COMPLETED") userStats[assignedTo].completed++;
+      }
+    });
+
+    sheets[sheetId] = s;
+  }
+
+  // Add this week's and today's activity stats
+  const now = new Date();
+  const todayStart = new Date(now); todayStart.setHours(0, 0, 0, 0);
+  const weekStart = new Date(now); weekStart.setDate(weekStart.getDate() - 6); weekStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(now); dayEnd.setHours(23, 59, 59, 999);
+
+  const [todayStats, weekStats] = await Promise.all([
+    fetchPeriodStats(todayStart, dayEnd, userMap),
+    fetchPeriodStats(weekStart, dayEnd, userMap),
+  ]);
+
+  return {
+    users,
+    batch: {
+      currentStatus: { total: grandTotal, assigned: grandAssigned, inProgress: grandInProgress, billingReady: grandBillingReady, completed: grandCompleted, unassigned: grandUnassigned },
+      sheets,
+      userStats: Object.entries(userStats).map(([id, s]) => ({ userId: id, ...s })).sort((a, b) => b.assigned - a.assigned),
+    },
+    activityToday: todayStats,
+    activityThisWeek: weekStats,
+  };
+}
+
+// ── IST timestamp helpers ─────────────────────────────────────────────────────
+function toIST(ts) {
+  if (!ts) return "—";
+  let d;
+  if (ts && ts.toDate) d = ts.toDate();
+  else if (typeof ts === "number") d = new Date(ts);
+  else d = new Date(ts);
+  if (isNaN(d.getTime())) return "—";
+  const ist = new Date(d.getTime() + 5.5 * 3600000);
+  const M = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${ist.getUTCDate()} ${M[ist.getUTCMonth()]} ${String(ist.getUTCHours()).padStart(2,"0")}:${String(ist.getUTCMinutes()).padStart(2,"0")} IST`;
+}
+function toISTDate(ts) {
+  if (!ts) return "—";
+  let d;
+  if (ts && ts.toDate) d = ts.toDate();
+  else if (typeof ts === "number") d = new Date(ts);
+  else d = new Date(ts);
+  if (isNaN(d.getTime())) return "—";
+  const ist = new Date(d.getTime() + 5.5 * 3600000);
+  const M = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  return `${ist.getUTCDate()} ${M[ist.getUTCMonth()]} ${ist.getUTCFullYear()}`;
+}
+
+// PDF Report Download
+app.get("/admin/report/pdf", async (req, res) => {
+  try {
+    const period = req.query.period || "week";
+    const baseUrl = req.headers["x-forwarded-host"]
+      ? `${req.headers["x-forwarded-proto"] || "https"}://${req.headers["x-forwarded-host"]}`
+      : "https://sarn-backend-862276535294.asia-south1.run.app";
+    const now = new Date();
+    const dayEnd = new Date(now); dayEnd.setHours(23, 59, 59, 999);
+    let fromDate, label;
+
+    if (period === "today") {
+      fromDate = new Date(now); fromDate.setHours(0, 0, 0, 0);
+      label = `Daily Report — ${now.toDateString()}`;
+    } else if (period === "month") {
+      fromDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      label = `Monthly Report — ${now.toLocaleString("default", { month: "long", year: "numeric" })}`;
+    } else {
+      fromDate = new Date(now); fromDate.setDate(fromDate.getDate() - 6); fromDate.setHours(0, 0, 0, 0);
+      label = `Weekly Report — ${fromDate.toDateString()} to ${now.toDateString()}`;
+    }
+
+    const usersSnap = await db.collection("users").get();
+    const userMap = {};
+    usersSnap.docs.forEach(d => { const u = d.data(); userMap[d.id] = u.name || u.email || d.id; });
+
+    const data = await fetchPeriodStats(fromDate, dayEnd, userMap);
+
+    // Also get current status snapshot per sheet
+    const batchSheetsSnap = await db.collection("batch_sheets").get();
+    const sheetTotals = {};
+    for (const sheetDoc of batchSheetsSnap.docs) {
+      const recsSnap = await db.collection("batch_sheets").doc(sheetDoc.id).collection("records").get();
+      sheetTotals[sheetDoc.id] = { total: recsSnap.size };
+    }
+
+    const PDFDocument = require("pdfkit");
+    const doc = new PDFDocument({ margin: 50, size: "A4" });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition", `attachment; filename=SARN_${period}_report_${now.toISOString().split("T")[0]}.pdf`);
+    doc.pipe(res);
+
+    // Header
+    doc.rect(0, 0, 612, 80).fill("#1e40af");
+    doc.fill("#ffffff").fontSize(22).font("Helvetica-Bold").text("SARN TECHNOLOGIES", 50, 20);
+    doc.fontSize(12).font("Helvetica").text(label, 50, 50);
+    doc.fill("#000000").moveDown(3);
+
+    // Summary box
+    doc.fontSize(14).font("Helvetica-Bold").text("Summary", 50, 100);
+    doc.moveTo(50, 118).lineTo(562, 118).lineWidth(1).strokeColor("#1e40af").stroke();
+    doc.moveDown(0.5);
+
+    const summaryY = 125;
+    const col = (i) => 50 + i * 130;
+
+    doc.roundedRect(col(0), summaryY, 115, 60, 6).fill("#eff6ff");
+    doc.roundedRect(col(1), summaryY, 115, 60, 6).fill("#f0fdf4");
+    doc.roundedRect(col(2), summaryY, 115, 60, 6).fill("#fff7ed");
+    doc.roundedRect(col(3), summaryY, 115, 60, 6).fill("#fef2f2");
+
+    const statBox = (x, y, val, lbl, color) => {
+      doc.fill(color).fontSize(22).font("Helvetica-Bold").text(String(val), x + 10, y + 8, { width: 95, align: "center" });
+      doc.fill("#6b7280").fontSize(9).font("Helvetica").text(lbl, x + 10, y + 38, { width: 95, align: "center" });
+    };
+    statBox(col(0), summaryY, data.totalAssigned,  "Assigned",  "#1e40af");
+    statBox(col(1), summaryY, data.totalCompleted, "Completed", "#16a34a");
+    statBox(col(2), summaryY, data.totalPending,   "Pending",   "#d97706");
+    statBox(col(3), summaryY, Object.keys(data.sheets).length, "Active Sheets", "#dc2626");
+
+    doc.fill("#000000").moveDown(6);
+
+    // User Performance Table
+    if (data.users.length > 0) {
+      const tableTop = summaryY + 80;
+      doc.fontSize(14).font("Helvetica-Bold").text("User Performance", 50, tableTop);
+      doc.moveTo(50, tableTop + 18).lineTo(562, tableTop + 18).lineWidth(1).strokeColor("#1e40af").stroke();
+
+      // Table header
+      const hY = tableTop + 24;
+      doc.rect(50, hY, 512, 20).fill("#1e40af");
+      doc.fill("#ffffff").fontSize(10).font("Helvetica-Bold");
+      doc.text("#",     55,  hY + 5, { width: 25 });
+      doc.text("Name",  85,  hY + 5, { width: 180 });
+      doc.text("Assigned", 270, hY + 5, { width: 80, align: "center" });
+      doc.text("Completed", 355, hY + 5, { width: 80, align: "center" });
+      doc.text("Pending",  440, hY + 5, { width: 80, align: "center" });
+
+      let rowY = hY + 22;
+      data.users.forEach((u, i) => {
+        const bg = i % 2 === 0 ? "#f8fafc" : "#ffffff";
+        doc.rect(50, rowY, 512, 20).fill(bg);
+        doc.fill("#111827").fontSize(10).font("Helvetica");
+        doc.text(String(i + 1), 55, rowY + 5, { width: 25 });
+        doc.fill("#1d4ed8").text(u.name, 85, rowY + 5, { width: 180, underline: true, link: `${baseUrl}/admin/report/user-detail?userId=${u.userId}&period=${period}` });
+        doc.fill("#111827").text(String(u.assigned),  270, rowY + 5, { width: 80, align: "center" });
+        doc.text(String(u.completed), 355, rowY + 5, { width: 80, align: "center" });
+        doc.text(String(u.pending),   440, rowY + 5, { width: 80, align: "center" });
+        rowY += 22;
+        if (rowY > 720) { doc.addPage(); rowY = 50; }
+      });
+      doc.moveDown(2);
+    }
+
+    // Sheet Breakdown
+    if (Object.keys(data.sheets).length > 0) {
+      const sheetY = doc.y + 10;
+      doc.fontSize(14).font("Helvetica-Bold").text("Sheet Breakdown", 50, sheetY);
+      doc.moveTo(50, sheetY + 18).lineTo(562, sheetY + 18).lineWidth(1).strokeColor("#1e40af").stroke();
+
+      let sY = sheetY + 28;
+      Object.entries(data.sheets).forEach(([sheet, s], i) => {
+        const bg = i % 2 === 0 ? "#f8fafc" : "#ffffff";
+        doc.rect(50, sY, 512, 20).fill(bg);
+        doc.fill("#111827").fontSize(10).font("Helvetica");
+        doc.text(sheet,               55,  sY + 5, { width: 250 });
+        doc.text(`Assigned: ${s.assigned}`,  310, sY + 5, { width: 120 });
+        doc.text(`Completed: ${s.completed}`,435, sY + 5, { width: 120 });
+        sY += 22;
+        if (sY > 720) { doc.addPage(); sY = 50; }
+      });
+    }
+
+    // Footer
+    doc.fontSize(8).fill("#9ca3af").text(
+      `Generated by SARN Assistant on ${toIST(Date.now())}`,
+      50, 790, { align: "center", width: 512 }
+    );
+
+    doc.end();
+  } catch (err) {
+    console.error("PDF REPORT ERROR:", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── User Activity Detail PDF ─────────────────────────────────────────────────
+app.get("/admin/report/user-detail", async (req, res) => {
+  try {
+    const userId = String(req.query.userId || "").trim().toUpperCase();
+    const period = req.query.period || "week";
+    if (!userId) return res.status(400).json({ ok: false, error: "userId required" });
+
+    // Period boundaries (IST-aware)
+    const IST_MS = 5.5 * 3600000;
+    const now = new Date();
+    const nowIST = new Date(now.getTime() + IST_MS);
+    let fromDate, periodLabel;
+
+    if (period === "today") {
+      const istMidnight = new Date(nowIST); istMidnight.setUTCHours(0, 0, 0, 0);
+      fromDate = new Date(istMidnight.getTime() - IST_MS);
+      periodLabel = `Daily Report — ${nowIST.toUTCString().slice(0, 16)}`;
+    } else if (period === "month") {
+      const istFirst = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), 1));
+      fromDate = new Date(istFirst.getTime() - IST_MS);
+      const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+      periodLabel = `Monthly Report — ${monthNames[nowIST.getUTCMonth()]} ${nowIST.getUTCFullYear()}`;
+    } else {
+      const istMidnight = new Date(nowIST); istMidnight.setUTCHours(0, 0, 0, 0);
+      const istWeekStart = new Date(istMidnight.getTime() - 6 * 86400000);
+      fromDate = new Date(istWeekStart.getTime() - IST_MS);
+      periodLabel = `Weekly Report — last 7 days`;
+    }
+    const dayEnd = new Date(now.getTime() + 86400000); // generous end: tomorrow UTC
+
+    // Get user display name
+    const userSnap = await db.collection("users").doc(userId).get();
+    const userName = userSnap.exists ? (userSnap.data().name || userId) : userId;
+
+    // ── 1. BATCH records ─────────────────────────────────────────────────────
+    const batchRows = [];
+    const batchSheetsSnap = await db.collection("batch_sheets").get();
+    for (const sheetDoc of batchSheetsSnap.docs) {
+      const recsSnap = await sheetDoc.ref.collection("records").get();
+      recsSnap.forEach(doc => {
+        const d = doc.data();
+        const v = d.verification || {};
+        if (!v.assignedTo || v.assignedTo.toUpperCase() !== userId) return;
+        const assignedAt = v.assignedAt?.toDate ? v.assignedAt.toDate() : null;
+        const completedAt = v.completedAt?.toDate ? v.completedAt.toDate() : null;
+        const inPeriod = (assignedAt && assignedAt >= fromDate && assignedAt <= dayEnd) ||
+                         (completedAt && completedAt >= fromDate && completedAt <= dayEnd);
+        if (!inPeriod) return;
+        batchRows.push({
+          sheet: sheetDoc.id,
+          matNumber: d.common?.newRepository || "—",
+          chemical: String(d.common?.chemicalName || "—").slice(0, 28),
+          assignedAt: assignedAt ? toIST(v.assignedAt) : "—",
+          completedAt: completedAt ? toISTDate(v.completedAt) : "—",
+          status: v.status === "completed" ? "Done" : "Pending",
+        });
+      });
+    }
+
+    // ── 2. SDS records ────────────────────────────────────────────────────────
+    const sdsRows = [];
+    const sdsSheetsSnap = await db.collection("sds_sheets").get();
+    const SDS_STAGES = ["search", "supersede", "transcription", "billing"];
+    for (const sheetDoc of sdsSheetsSnap.docs) {
+      const refsSnap = await sheetDoc.ref.collection("references").get();
+      refsSnap.forEach(doc => {
+        const d = doc.data();
+        for (const stage of SDS_STAGES) {
+          const s = d[stage] || {};
+          if (!s.assignedTo || s.assignedTo.toUpperCase() !== userId) continue;
+          const assignedAt = s.assignedAt?.toDate ? s.assignedAt.toDate() : null;
+          const completedAt = s.completedAt?.toDate ? s.completedAt.toDate() : null;
+          const inPeriod = (assignedAt && assignedAt >= fromDate && assignedAt <= dayEnd) ||
+                           (completedAt && completedAt >= fromDate && completedAt <= dayEnd);
+          if (!inPeriod) continue;
+          sdsRows.push({
+            sheet: sheetDoc.id,
+            refId: String(d.common?.repositoryNumber || d.referenceId || doc.id).slice(0, 18),
+            stage: stage.charAt(0).toUpperCase() + stage.slice(1),
+            chemical: String(d.common?.chemicalProduct || "—").slice(0, 22),
+            assignedAt: assignedAt ? toIST(s.assignedAt) : "—",
+            status: s.status === "completed" ? "Done" : "Pending",
+          });
+        }
+      });
+    }
+
+    // ── 3. DQ records ─────────────────────────────────────────────────────────
+    const dqRows = [];
+    const dqSheetsSnap = await db.collection("dq_sheets").get();
+    for (const sheetDoc of dqSheetsSnap.docs) {
+      const refsSnap = await sheetDoc.ref.collection("references").get();
+      refsSnap.forEach(doc => {
+        const d = doc.data();
+        if (!d.assignedTo || d.assignedTo === "__FORCE_BILLED__") return;
+        if (d.assignedTo.toUpperCase() !== userId) return;
+        const assignedAt = d.assignedAt ? new Date(d.assignedAt) : null;
+        const completedAt = d.billingReady && d.updatedAt ? new Date(d.updatedAt) : null;
+        const inPeriod = (assignedAt && assignedAt >= fromDate && assignedAt <= dayEnd) ||
+                         (completedAt && completedAt >= fromDate && completedAt <= dayEnd);
+        if (!inPeriod) return;
+        dqRows.push({
+          sheet: sheetDoc.id,
+          sdsNumber: String(d.repoId || doc.id).slice(0, 18),
+          chemical: String(d.common?.chemicalProduct || "—").slice(0, 28),
+          assignedAt: assignedAt ? toIST(d.assignedAt) : "—",
+          completedAt: completedAt ? toISTDate(d.updatedAt) : "—",
+          status: d.billingReady ? "Done" : "In Prog.",
+        });
+      });
+    }
+
+    // ── Generate PDF ──────────────────────────────────────────────────────────
+    const PDFDocument = require("pdfkit");
+    const doc = new PDFDocument({ margin: 50, size: "A4" });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition",
+      `attachment; filename=SARN_${userId}_${period}_${now.toISOString().split("T")[0]}.pdf`);
+    doc.pipe(res);
+
+    // Header bar
+    doc.rect(0, 0, 612, 78).fill("#1e40af");
+    doc.fill("#ffffff").fontSize(19).font("Helvetica-Bold").text("SARN TECHNOLOGIES", 50, 16);
+    doc.fontSize(10).font("Helvetica")
+       .text(`User Activity Report  •  ${userName}  (${userId})`, 50, 44);
+    doc.fill("#000000");
+
+    let curY = 88;
+    doc.fontSize(9).fill("#374151").font("Helvetica")
+       .text(`${periodLabel}   |   All timestamps in IST   |   Generated: ${toIST(Date.now())}`, 50, curY);
+    curY += 18;
+
+    // ── Section renderer ──────────────────────────────────────────────────────
+    function renderSection(title, colDefs, rows, emptyMsg) {
+      const HDR_H = 20, ROW_H = 18;
+      if (curY + 50 > 760) { doc.addPage(); curY = 50; }
+
+      doc.fontSize(12).font("Helvetica-Bold").fill("#1e40af").text(title, 50, curY);
+      curY += 16;
+      doc.moveTo(50, curY).lineTo(562, curY).lineWidth(0.8).strokeColor("#1e40af").stroke();
+      curY += 6;
+
+      if (!rows.length) {
+        doc.fontSize(9).font("Helvetica").fill("#6b7280").text(emptyMsg, 55, curY);
+        curY += 24;
+        return;
+      }
+
+      // Column header row
+      if (curY + HDR_H > 760) { doc.addPage(); curY = 50; }
+      doc.rect(50, curY, 512, HDR_H).fill("#1e3a8a");
+      let hx = 50;
+      colDefs.forEach(c => {
+        doc.fill("#ffffff").fontSize(8.5).font("Helvetica-Bold")
+           .text(c.header, hx + 3, curY + 5, { width: c.w - 4, align: c.align || "left", lineBreak: false });
+        hx += c.w;
+      });
+      curY += HDR_H;
+
+      // Data rows
+      rows.forEach((row, i) => {
+        if (curY + ROW_H > 760) { doc.addPage(); curY = 50; }
+        doc.rect(50, curY, 512, ROW_H).fill(i % 2 === 0 ? "#f8fafc" : "#ffffff");
+        let rx = 50;
+        colDefs.forEach(c => {
+          const val = String(row[c.key] || "—");
+          let color = "#111827";
+          if (c.key === "status") color = val === "Done" ? "#16a34a" : (val === "Pending" ? "#d97706" : "#6b7280");
+          doc.fill(color).fontSize(8.5).font("Helvetica")
+             .text(val, rx + 3, curY + 4, { width: c.w - 4, align: c.align || "left", lineBreak: false });
+          rx += c.w;
+        });
+        curY += ROW_H;
+      });
+      curY += 14;
+    }
+
+    // BATCH section — columns sum = 512
+    renderSection(
+      `Batch Verification  (${batchRows.length} record${batchRows.length !== 1 ? "s" : ""})`,
+      [
+        { header: "Sheet",         key: "sheet",       w: 100 },
+        { header: "New Repo #",    key: "matNumber",   w: 100 },
+        { header: "Chemical Name", key: "chemical",    w: 110 },
+        { header: "Assigned At (IST)",  key: "assignedAt",  w: 127 },
+        { header: "Completed",     key: "completedAt", w: 42,  align: "center" },
+        { header: "Status",        key: "status",      w: 33,  align: "center" },
+      ],
+      batchRows,
+      "No Batch records found for this period."
+    );
+
+    // SDS section — columns sum = 512
+    renderSection(
+      `SDS Workflow  (${sdsRows.length} record${sdsRows.length !== 1 ? "s" : ""})`,
+      [
+        { header: "Sheet",         key: "sheet",      w: 85  },
+        { header: "Repository #",  key: "refId",      w: 95  },
+        { header: "Stage",         key: "stage",      w: 75  },
+        { header: "Chemical",      key: "chemical",   w: 115 },
+        { header: "Assigned At (IST)", key: "assignedAt", w: 109 },
+        { header: "Status",        key: "status",     w: 33, align: "center" },
+      ],
+      sdsRows,
+      "No SDS records found for this period."
+    );
+
+    // DQ section — columns sum = 512
+    renderSection(
+      `DQ Workflow  (${dqRows.length} record${dqRows.length !== 1 ? "s" : ""})`,
+      [
+        { header: "Sheet",         key: "sheet",       w: 100 },
+        { header: "SDS #",         key: "sdsNumber",   w: 100 },
+        { header: "Chemical",      key: "chemical",    w: 110 },
+        { header: "Assigned At (IST)",  key: "assignedAt",  w: 127 },
+        { header: "Completed",     key: "completedAt", w: 42,  align: "center" },
+        { header: "Status",        key: "status",      w: 33,  align: "center" },
+      ],
+      dqRows,
+      "No DQ records found for this period."
+    );
+
+    // Summary box
+    const totalRecs = batchRows.length + sdsRows.length + dqRows.length;
+    if (curY + 48 > 760) { doc.addPage(); curY = 50; }
+    doc.rect(50, curY, 512, 40).fill("#eff6ff");
+    doc.fill("#1e40af").fontSize(11).font("Helvetica-Bold").text("Summary", 60, curY + 6);
+    doc.fill("#374151").fontSize(9).font("Helvetica")
+       .text(
+         `Batch: ${batchRows.length}   |   SDS: ${sdsRows.length}   |   DQ: ${dqRows.length}   |   Total: ${totalRecs} record${totalRecs !== 1 ? "s" : ""}`,
+         60, curY + 22
+       );
+
+    // Footer
+    doc.fontSize(8).fill("#9ca3af").font("Helvetica")
+       .text(`SARN Technologies  •  Confidential  •  ${toIST(Date.now())}`, 50, 808, { align: "center", width: 512 });
+
+    doc.end();
+  } catch (err) {
+    console.error("USER DETAIL PDF ERROR:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Google Drive MAT Search ───────────────────────────────────────────────────
+const DRIVE_KEY_PATH = require("path").join(__dirname, "sarn-drive-access.json");
+
+async function getDriveClient() {
+  const { google } = require("googleapis");
+  const key = require(DRIVE_KEY_PATH);
+  const auth = new google.auth.JWT({
+    email: key.client_email,
+    key: key.private_key,
+    scopes: ["https://www.googleapis.com/auth/drive.readonly"],
+    subject: "ramprakash@sarntech.in",
+  });
+  await auth.authorize();
+  return google.drive({ version: "v3", auth });
+}
+
+app.get("/admin/drive/search", async (req, res) => {
+  try {
+    const mat = String(req.query.mat || "").trim().replace(/['"\\]/g, "");
+    if (!mat) return res.status(400).json({ ok: false, error: "mat parameter required" });
+
+    const drive = await getDriveClient();
+    const response = await drive.files.list({
+      q: `name contains '${mat}' and trashed = false`,
+      fields: "files(id, name, mimeType, size, modifiedTime, webViewLink)",
+      pageSize: 20,
+      orderBy: "name",
+    });
+
+    const files = (response.data.files || []).map(f => ({
+      id: f.id,
+      name: f.name,
+      size: f.size ? Math.round(Number(f.size) / 1024) + " KB" : "—",
+      modified: f.modifiedTime ? toISTDate(new Date(f.modifiedTime).getTime()) : "—",
+      downloadUrl: `https://sarn-backend-862276535294.asia-south1.run.app/admin/drive/download/${f.id}`,
+    }));
+
+    res.json({ ok: true, mat, count: files.length, files });
+  } catch (err) {
+    console.error("DRIVE SEARCH ERROR:", err.message);
+    console.error("DRIVE SEARCH DETAIL:", JSON.stringify(err.response?.data || {}));
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.get("/admin/drive/download/:fileId", async (req, res) => {
+  try {
+    const { fileId } = req.params;
+    const drive = await getDriveClient();
+
+    // Get file metadata for the name
+    const meta = await drive.files.get({ fileId, fields: "name, mimeType" });
+    const fileName = meta.data.name || fileId;
+
+    res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+    res.setHeader("Content-Type", meta.data.mimeType || "application/octet-stream");
+
+    const fileRes = await drive.files.get(
+      { fileId, alt: "media" },
+      { responseType: "stream" }
+    );
+    fileRes.data.pipe(res);
+  } catch (err) {
+    console.error("DRIVE DOWNLOAD ERROR:", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Firestore Cross-Collection Search ────────────────────────────────────────
+app.get("/admin/firestore/search", async (req, res) => {
+  try {
+    const q = String(req.query.q || "").trim().toUpperCase();
+    if (!q || q.length < 3) return res.status(400).json({ ok: false, error: "q must be at least 3 characters" });
+
+    const [batchSnap, sdsSnap, dqSnap] = await Promise.all([
+      db.collection("batch_sheets").get(),
+      db.collection("sds_sheets").get(),
+      db.collection("dq_sheets").get(),
+    ]);
+
+    // Batch: search common.newRepository (MAT number)
+    const batchResults = [];
+    for (const sheetDoc of batchSnap.docs) {
+      const recsSnap = await sheetDoc.ref.collection("records").get();
+      recsSnap.forEach(doc => {
+        const d = doc.data();
+        const mat = String(d.common?.newRepository || "").toUpperCase();
+        if (!mat || !mat.includes(q)) return;
+        batchResults.push({
+          type: "Batch",
+          sheet: sheetDoc.id,
+          id: d.common?.newRepository || doc.id,
+          chemical: d.common?.chemicalName || "—",
+          status: d.verification?.status || "pending",
+          assignedTo: d.verification?.assignedTo || "—",
+        });
+      });
+    }
+
+    // SDS: search common.repositoryNumber or referenceId
+    const sdsResults = [];
+    for (const sheetDoc of sdsSnap.docs) {
+      const refsSnap = await sheetDoc.ref.collection("references").get();
+      refsSnap.forEach(doc => {
+        const d = doc.data();
+        const repoNo = String(d.common?.repositoryNumber || d.referenceId || doc.id).toUpperCase();
+        if (!repoNo.includes(q)) return;
+        const SDS_STAGES = ["search", "supersede", "transcription", "billing"];
+        const activeStage = SDS_STAGES.find(s => d[s]?.status === "in_progress" || d[s]?.status === "pending");
+        const allDone = SDS_STAGES.every(s => !d[s] || d[s]?.status === "completed");
+        sdsResults.push({
+          type: "SDS",
+          sheet: sheetDoc.id,
+          id: d.common?.repositoryNumber || d.referenceId || doc.id,
+          chemical: d.common?.chemicalProduct || "—",
+          manufacturer: d.common?.manufacturerName || "—",
+          stage: activeStage ? activeStage.charAt(0).toUpperCase() + activeStage.slice(1) : (allDone ? "Completed" : "—"),
+          detail: {
+            businessEntity:    d.common?.businessEntity    || "—",
+            repositoryNumber:  d.common?.repositoryNumber  || "—",
+            chemicalProduct:   d.common?.chemicalProduct   || "—",
+            manufacturerName:  d.common?.manufacturerName  || "—",
+            revisionDate:      d.common?.revisionDate      || "—",
+            verificationDate:  d.common?.verificationDate  || "—",
+            search: {
+              status:       d.search?.status       || "—",
+              assignedTo:   d.search?.assignedTo   || "—",
+              websearch1:   d.search?.websearch1   || "—",
+              websearch2:   d.search?.websearch2   || "—",
+              startDate:    d.search?.startDate    || "—",
+              endDate:      d.search?.endDate      || "—",
+              remarks:      d.search?.remarks      || "—",
+              notPublishable: d.search?.notPublishable ? "Yes" : "No",
+              notPublishableRemarks: d.search?.notPublishableRemarks || "—",
+            },
+            supersede: {
+              status:               d.supersede?.status               || "—",
+              assignedTo:           d.supersede?.assignedTo           || "—",
+              newRepositoryNumber:  d.supersede?.newRepositoryNumber  || "—",
+              supersedeDate:        d.supersede?.supersedeDate        || "—",
+              verifiedDate:         d.supersede?.verifiedDate         || "—",
+              remarks:              d.supersede?.remarks              || "—",
+            },
+            transcription: {
+              status:       d.transcription?.status       || "—",
+              assignedTo:   d.transcription?.assignedTo   || "—",
+              verifiedDate: d.transcription?.verifiedDate || "—",
+              remarks:      d.transcription?.remarks      || "—",
+            },
+            billing: {
+              status:     d.billing?.status     || "—",
+              assignedTo: d.billing?.assignedTo || "—",
+            },
+          },
+        });
+      });
+    }
+
+    // DQ: search repoId
+    const dqResults = [];
+    for (const sheetDoc of dqSnap.docs) {
+      const refsSnap = await sheetDoc.ref.collection("references").get();
+      refsSnap.forEach(doc => {
+        const d = doc.data();
+        const repoId = String(d.repoId || doc.id).toUpperCase();
+        if (!repoId.includes(q)) return;
+        dqResults.push({
+          type: "DQ",
+          sheet: sheetDoc.id,
+          id: d.repoId || doc.id,
+          chemical: d.common?.chemicalProduct || "—",
+          manufacturer: d.common?.manufacturer || "—",
+          status: d.billingReady ? "Billing Ready" : (d.status || "Pending"),
+          assignedTo: d.assignedTo || "—",
+        });
+      });
+    }
+
+    res.json({
+      ok: true,
+      q,
+      total: batchResults.length + sdsResults.length + dqResults.length,
+      batch: batchResults,
+      sds: sdsResults,
+      dq: dqResults,
+    });
+  } catch (err) {
+    console.error("FIRESTORE SEARCH ERROR:", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// ── Super Admin Executive Summary PDF ────────────────────────────────────────
+app.get("/admin/report/superadmin-pdf", async (req, res) => {
+  try {
+    const period = req.query.period || "week";
+    const IST_MS = 5.5 * 3600000;
+    const now = new Date();
+    const nowIST = new Date(now.getTime() + IST_MS);
+    let fromDate, periodLabel;
+
+    if (period === "today") {
+      const istMidnight = new Date(nowIST); istMidnight.setUTCHours(0, 0, 0, 0);
+      fromDate = new Date(istMidnight.getTime() - IST_MS);
+      periodLabel = `Daily Summary — ${toISTDate(now.getTime())}`;
+    } else if (period === "month") {
+      const istFirst = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), 1));
+      fromDate = new Date(istFirst.getTime() - IST_MS);
+      const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+      periodLabel = `Monthly Summary — ${monthNames[nowIST.getUTCMonth()]} ${nowIST.getUTCFullYear()}`;
+    } else {
+      const istMidnight = new Date(nowIST); istMidnight.setUTCHours(0, 0, 0, 0);
+      const istWeekStart = new Date(istMidnight.getTime() - 6 * 86400000);
+      fromDate = new Date(istWeekStart.getTime() - IST_MS);
+      periodLabel = `Weekly Summary — Last 7 Days`;
+    }
+    const dayEnd = new Date(now.getTime() + 86400000);
+
+    function formatBusiness(sheetId) {
+      return sheetId.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+    }
+
+    // Fetch all user names up front
+    const usersSnap = await db.collection("users").get();
+    const userNames = {};
+    usersSnap.forEach(d => { userNames[d.id] = d.data().name || d.id; });
+
+    // userMap: userId → { name, taskTypes: Set, assigned, completed, firstDate }
+    // businessMap: sheetId → { name, assigned, completed }
+    const userMap = {};
+    const businessMap = {};
+
+    function ensureUser(uid) {
+      if (!userMap[uid]) userMap[uid] = { name: userNames[uid] || uid, taskTypes: new Set(), assigned: 0, completed: 0, firstDate: null };
+    }
+    function ensureBusiness(sheetId) {
+      if (!businessMap[sheetId]) businessMap[sheetId] = { name: formatBusiness(sheetId), assigned: 0, completed: 0 };
+    }
+    function trackDate(uid, d) {
+      if (d && (!userMap[uid].firstDate || d < userMap[uid].firstDate)) userMap[uid].firstDate = d;
+    }
+
+    // 1. BATCH
+    const batchSheetsSnap = await db.collection("batch_sheets").get();
+    for (const sheetDoc of batchSheetsSnap.docs) {
+      const recsSnap = await sheetDoc.ref.collection("records").get();
+      recsSnap.forEach(doc => {
+        const d = doc.data();
+        const v = d.verification || {};
+        if (!v.assignedTo) return;
+        const uid = v.assignedTo.toUpperCase();
+        const assignedAt = v.assignedAt?.toDate ? v.assignedAt.toDate() : null;
+        const completedAt = v.completedAt?.toDate ? v.completedAt.toDate() : null;
+        const inPeriod = (assignedAt && assignedAt >= fromDate && assignedAt <= dayEnd) ||
+                         (completedAt && completedAt >= fromDate && completedAt <= dayEnd);
+        if (!inPeriod) return;
+        ensureUser(uid); ensureBusiness(sheetDoc.id);
+        userMap[uid].taskTypes.add("Batch");
+        userMap[uid].assigned++;
+        businessMap[sheetDoc.id].assigned++;
+        trackDate(uid, assignedAt || completedAt);
+        if (v.status === "completed") { userMap[uid].completed++; businessMap[sheetDoc.id].completed++; }
+      });
+    }
+
+    // 2. SDS
+    const sdsSheetsSnap = await db.collection("sds_sheets").get();
+    const SDS_STAGES = ["search", "supersede", "transcription", "billing"];
+    for (const sheetDoc of sdsSheetsSnap.docs) {
+      const refsSnap = await sheetDoc.ref.collection("references").get();
+      refsSnap.forEach(doc => {
+        const d = doc.data();
+        for (const stage of SDS_STAGES) {
+          const s = d[stage] || {};
+          if (!s.assignedTo) continue;
+          const uid = s.assignedTo.toUpperCase();
+          const assignedAt = s.assignedAt?.toDate ? s.assignedAt.toDate() : null;
+          const completedAt = s.completedAt?.toDate ? s.completedAt.toDate() : null;
+          const inPeriod = (assignedAt && assignedAt >= fromDate && assignedAt <= dayEnd) ||
+                           (completedAt && completedAt >= fromDate && completedAt <= dayEnd);
+          if (!inPeriod) continue;
+          ensureUser(uid); ensureBusiness(sheetDoc.id);
+          const label = stage === "supersede" ? "Supersede" : stage.charAt(0).toUpperCase() + stage.slice(1);
+          userMap[uid].taskTypes.add(`SDS ${label}`);
+          userMap[uid].assigned++;
+          businessMap[sheetDoc.id].assigned++;
+          trackDate(uid, assignedAt || completedAt);
+          if (s.status === "completed") { userMap[uid].completed++; businessMap[sheetDoc.id].completed++; }
+        }
+      });
+    }
+
+    // 3. DQ
+    const dqSheetsSnap = await db.collection("dq_sheets").get();
+    for (const sheetDoc of dqSheetsSnap.docs) {
+      const refsSnap = await sheetDoc.ref.collection("references").get();
+      refsSnap.forEach(doc => {
+        const d = doc.data();
+        if (!d.assignedTo || d.assignedTo === "__FORCE_BILLED__") return;
+        const uid = d.assignedTo.toUpperCase();
+        const assignedAt = d.assignedAt ? new Date(d.assignedAt) : null;
+        const completedAt = d.billingReady && d.updatedAt ? new Date(d.updatedAt) : null;
+        const inPeriod = (assignedAt && assignedAt >= fromDate && assignedAt <= dayEnd) ||
+                         (completedAt && completedAt >= fromDate && completedAt <= dayEnd);
+        if (!inPeriod) return;
+        ensureUser(uid); ensureBusiness(sheetDoc.id);
+        userMap[uid].taskTypes.add("DQ");
+        userMap[uid].assigned++;
+        businessMap[sheetDoc.id].assigned++;
+        trackDate(uid, assignedAt || completedAt);
+        if (d.billingReady) { userMap[uid].completed++; businessMap[sheetDoc.id].completed++; }
+      });
+    }
+
+    // Build sorted arrays
+    const userRows = Object.entries(userMap)
+      .sort((a, b) => b[1].assigned - a[1].assigned)
+      .map(([uid, u], i) => ({
+        num: i + 1,
+        name: u.name,
+        assigned: u.assigned,
+        completed: u.completed,
+        taskTypes: Array.from(u.taskTypes).join(", "),
+        date: u.firstDate ? toISTDate(u.firstDate.getTime()) : "—",
+      }));
+
+    const businessRows = Object.entries(businessMap)
+      .sort((a, b) => b[1].assigned - a[1].assigned)
+      .map(([, b], i) => ({
+        num: i + 1,
+        name: b.name,
+        assigned: b.assigned,
+        completed: b.completed,
+        pending: b.assigned - b.completed,
+      }));
+
+    // ── Generate PDF ──────────────────────────────────────────────────────────
+    const PDFDocument = require("pdfkit");
+    const doc = new PDFDocument({ margin: 50, size: "A4" });
+
+    res.setHeader("Content-Type", "application/pdf");
+    res.setHeader("Content-Disposition",
+      `attachment; filename=SARN_Executive_${period}_${now.toISOString().split("T")[0]}.pdf`);
+    doc.pipe(res);
+
+    // Header
+    doc.rect(0, 0, 612, 78).fill("#0f172a");
+    doc.fill("#ffffff").fontSize(19).font("Helvetica-Bold").text("SARN TECHNOLOGIES", 50, 14);
+    doc.fontSize(11).font("Helvetica").text("Executive Summary Report", 50, 40);
+    doc.fontSize(9).fill("#93c5fd").text(periodLabel, 50, 57);
+    doc.fill("#000000");
+
+    let curY = 92;
+    doc.fontSize(8.5).fill("#6b7280").font("Helvetica")
+       .text(`Generated: ${toISTDate(Date.now())}   |   Confidential`, 50, curY);
+    curY += 24;
+
+    function renderSASection(title, colDefs, rows, emptyMsg) {
+      const HDR_H = 22, ROW_H = 20;
+      if (curY + 60 > 760) { doc.addPage(); curY = 50; }
+      doc.fontSize(12).font("Helvetica-Bold").fill("#0f172a").text(title, 50, curY);
+      curY += 16;
+      doc.moveTo(50, curY).lineTo(562, curY).lineWidth(1).strokeColor("#0f172a").stroke();
+      curY += 8;
+
+      if (!rows.length) {
+        doc.fontSize(9).font("Helvetica").fill("#6b7280").text(emptyMsg || "No records found.", 55, curY);
+        curY += 28;
+        return;
+      }
+
+      if (curY + HDR_H > 760) { doc.addPage(); curY = 50; }
+      doc.rect(50, curY, 512, HDR_H).fill("#0f172a");
+      let hx = 50;
+      colDefs.forEach(c => {
+        doc.fill("#ffffff").fontSize(8.5).font("Helvetica-Bold")
+           .text(c.header, hx + 4, curY + 6, { width: c.w - 6, align: c.align || "left", lineBreak: false });
+        hx += c.w;
+      });
+      curY += HDR_H;
+
+      rows.forEach((row, i) => {
+        if (curY + ROW_H > 760) { doc.addPage(); curY = 50; }
+        doc.rect(50, curY, 512, ROW_H).fill(i % 2 === 0 ? "#f8fafc" : "#ffffff");
+        let rx = 50;
+        colDefs.forEach(c => {
+          doc.fill("#111827").fontSize(8.5).font("Helvetica")
+             .text(String(row[c.key] ?? "—"), rx + 4, curY + 5, { width: c.w - 6, align: c.align || "left", lineBreak: false });
+          rx += c.w;
+        });
+        curY += ROW_H;
+      });
+      curY += 18;
+    }
+
+    // Section 1 — Team Performance (cols sum = 512)
+    renderSASection(
+      "Team Performance",
+      [
+        { header: "#",           key: "num",       w: 25,  align: "center" },
+        { header: "Employee",    key: "name",      w: 130 },
+        { header: "Assigned",    key: "assigned",  w: 60,  align: "center" },
+        { header: "Completed",   key: "completed", w: 65,  align: "center" },
+        { header: "Task Types",  key: "taskTypes", w: 185 },
+        { header: "Date",        key: "date",      w: 47  },
+      ],
+      userRows,
+      "No employee activity found for this period."
+    );
+
+    // Section 2 — Business Activity (cols sum = 512)
+    renderSASection(
+      "Business-wise Activity",
+      [
+        { header: "#",           key: "num",       w: 25,  align: "center" },
+        { header: "Business",    key: "name",      w: 210 },
+        { header: "Assigned",    key: "assigned",  w: 93,  align: "center" },
+        { header: "Completed",   key: "completed", w: 92,  align: "center" },
+        { header: "Pending",     key: "pending",   w: 92,  align: "center" },
+      ],
+      businessRows,
+      "No business activity found for this period."
+    );
+
+    // Totals box
+    const totalAssigned  = userRows.reduce((s, r) => s + r.assigned,  0);
+    const totalCompleted = userRows.reduce((s, r) => s + r.completed, 0);
+    if (curY + 52 > 760) { doc.addPage(); curY = 50; }
+    doc.rect(50, curY, 512, 44).fill("#f0f9ff");
+    doc.fill("#0f172a").fontSize(11).font("Helvetica-Bold").text("Overall Totals", 60, curY + 6);
+    doc.fill("#374151").fontSize(9).font("Helvetica")
+       .text(
+         `Assigned: ${totalAssigned}   |   Completed: ${totalCompleted}   |   Pending: ${totalAssigned - totalCompleted}   |   Employees Active: ${userRows.length}   |   Businesses: ${businessRows.length}`,
+         60, curY + 24
+       );
+    curY += 60;
+
+    // Footer
+    doc.fontSize(8).fill("#9ca3af").font("Helvetica")
+       .text(`SARN Technologies  •  Executive Report  •  Confidential  •  ${toISTDate(Date.now())}`, 50, 808, { align: "center", width: 512 });
+
+    doc.end();
+  } catch (err) {
+    console.error("SUPER ADMIN PDF ERROR:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// Split raw PDF text into SDS sections (works for English, Spanish, etc.)
+function splitPdfSections(text) {
+  // Matches: "SECTION 1:", "Section 1 -", "SECCIÓN 1.", "1. IDENTIFICATION", "1 - PRODUCT"
+  const headerRe = /(?:^|\n)[ \t]*(?:(?:SECCI[ÓO]N|SECTION|Section|ABSCHNITT|RUBRIQUE)\s+(\d{1,2})\b[^\n]*|(\d{1,2})[ \t]*[\.\-–][ \t]*[A-ZÁÉÍÓÚÑÜA-Z][^\n]{4,})/gm;
+
+  const matches = [];
+  let m;
+  while ((m = headerRe.exec(text)) !== null) {
+    const num = parseInt(m[1] || m[2]);
+    if (!isNaN(num) && num >= 1 && num <= 20) {
+      matches.push({ index: m.index, header: m[0].trim(), num });
+    }
+  }
+
+  if (matches.length < 2) {
+    // Fallback: split into ~1500-char labelled chunks
+    const CHUNK = 1500;
+    const sections = [];
+    for (let i = 0; i < text.length && sections.length < 16; i += CHUNK) {
+      sections.push({ number: sections.length + 1, title: `Part ${sections.length + 1}`, text: text.slice(i, i + CHUNK) });
+    }
+    return sections;
+  }
+
+  return matches.slice(0, 20).map((match, i) => {
+    const start = match.index;
+    const end = i + 1 < matches.length ? matches[i + 1].index : text.length;
+    const body = text.slice(start, end).trim().slice(0, 2000);
+    const titleClean = match.header
+      .replace(/^[ \t]*/, "")
+      .replace(/^(?:SECCI[ÓO]N|SECTION|Section|ABSCHNITT)\s*\d+\s*[:\-–]?\s*/i, "")
+      .replace(/^\d+\s*[\.\-–:]\s*/, "")
+      .trim() || `Section ${match.num}`;
+    return { number: match.num, title: titleClean, text: body };
+  });
+}
+
+app.post("/admin/pdf/translate-section", async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text) return res.status(400).json({ ok: false, error: "text required" });
+    const GROQ_API_KEY = process.env.GROQ_API_KEY;
+    const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        temperature: 0,
+        max_tokens: 1200,
+        messages: [
+          {
+            role: "system",
+            content: `You are a professional technical translator specializing in chemical Safety Data Sheets (SDS/MSDS) following GHS and OSHA standards.
+
+Rules:
+- Translate everything to English accurately and completely
+- Preserve all numbers, percentages, CAS numbers, concentrations, and units exactly as written
+- Use correct IUPAC chemical names and standard SDS terminology
+- Keep the original structure: headings, bullet points, tables, line breaks
+- Do NOT summarize, skip, or paraphrase any content
+- Do NOT add any preamble, notes, or explanation — output the translated text only`,
+          },
+          { role: "user", content: text },
+        ],
+      }),
+    });
+    const data = await groqRes.json();
+    const translated = data.choices?.[0]?.message?.content?.trim() || "";
+    if (!translated) return res.json({ ok: false, error: "Translation returned empty." });
+    res.json({ ok: true, translated, usage: data.usage || null });
+  } catch (err) {
+    console.error("SECTION TRANSLATE ERROR:", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/admin/pdf/translate", async (req, res) => {
+  try {
+    const { fields } = req.body;
+    if (!fields) return res.status(400).json({ ok: false, error: "fields required" });
+    const GROQ_API_KEY = process.env.GROQ_API_KEY;
+    const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${GROQ_API_KEY}` },
+      body: JSON.stringify({
+        model: "llama-3.3-70b-versatile",
+        temperature: 0,
+        max_tokens: 300,
+        messages: [
+          {
+            role: "system",
+            content: "Translate all non-null string values in this SDS header JSON to English. Use correct IUPAC chemical names and standard SDS terminology. Keep the exact same JSON keys. Return ONLY valid JSON, no markdown, no explanation.",
+          },
+          { role: "user", content: JSON.stringify(fields) },
+        ],
+      }),
+    });
+    const data = await groqRes.json();
+    const raw = data.choices?.[0]?.message?.content?.trim() || "{}";
+    let translated = {};
+    try {
+      const jsonStr = raw.replace(/^```json?\s*/i, "").replace(/```\s*$/, "").trim();
+      translated = JSON.parse(jsonStr);
+    } catch {
+      return res.json({ ok: false, error: "Translation parsing failed." });
+    }
+    res.json({ ok: true, fields: translated, usage: data.usage || null });
+  } catch (err) {
+    console.error("TRANSLATE ERROR:", err.message);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+app.post("/admin/chat", chatUpload.single("pdf"), async (req, res) => {
+  try {
+    if (!process.env.GROQ_API_KEY) return res.json({ ok: false, error: "Groq API key not configured" });
+
+    const { message } = req.body;
+
+    // ---- PDF field extraction ----
+    if (req.file) {
+      const pdfParse = require("pdf-parse");
+      const pdfData = await pdfParse(req.file.buffer);
+      const rawText = pdfData.text.replace(/\r\n/g, "\n").replace(/[ \t]{2,}/g, " ").trim();
+      if (!rawText) return res.json({ ok: false, error: "Could not extract text from PDF." });
+
+      // Only first 2000 chars — all header fields appear near the top of SDS sheets
+      const snippet = rawText.slice(0, 2000);
+
+      const GROQ_API_KEY = process.env.GROQ_API_KEY;
+      const groqRes = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "Authorization": `Bearer ${GROQ_API_KEY}` },
+        body: JSON.stringify({
+          model: "llama-3.1-8b-instant",
+          temperature: 0,
+          max_tokens: 300,
+          messages: [
+            {
+              role: "system",
+              content: "Extract ONLY these 6 fields from the SDS document text. Return ONLY valid JSON with these exact keys: businessEntity, repositoryNumber, chemicalProduct, manufacturer, revisionDate, verificationDate. Use null for any field not found. No markdown, no explanation — raw JSON only.",
+            },
+            { role: "user", content: snippet },
+          ],
+        }),
+      });
+      const groqData = await groqRes.json();
+      const raw = groqData.choices?.[0]?.message?.content?.trim() || "{}";
+
+      let fields = {};
+      try {
+        const jsonStr = raw.replace(/^```json?\s*/i, "").replace(/```\s*$/, "").trim();
+        fields = JSON.parse(jsonStr);
+      } catch {
+        return res.json({ ok: false, error: "Could not parse fields from PDF. Try a clearer scan." });
+      }
+
+      const sections = splitPdfSections(rawText);
+      return res.json({ ok: true, type: "pdf_extract", pdfFields: fields, sections, usage: groqData.usage || null });
+    }
+
+    // ---- Admin assistant ----
+    if (message) {
+      const m = message.toLowerCase();
+
+      // Help — no Firestore or LLM needed
+      if (m.match(/help|what can you|how do i|what do you do/)) {
+        return res.json({ ok: true, reply:
+          `Here's what I can help you with:\n\n` +
+          `📊 "Tell me the batch report of [sheet name]"\n` +
+          `📋 "How many records are pending in [sheet]?"\n` +
+          `✅ "Who has completed the most records?"\n` +
+          `⚠️ "Which users have no records assigned?"\n` +
+          `📄 "List all batch sheets"\n` +
+          `👥 "List all users"\n` +
+          `🔍 "Give me an overview of all data"\n\n` +
+          `Just ask naturally — I have full access to all batch sheets, records, and users.`
+        });
+      }
+
+      // List sheets — no LLM needed
+      if (m.match(/list.*sheet|all sheet|which sheet|available sheet|show.*sheet/)) {
+        const snap = await db.collection("batch_sheets").get();
+        if (snap.empty) return res.json({ ok: true, reply: "No batch sheets found." });
+        return res.json({ ok: true, reply: `📄 Batch Sheets (${snap.size}):\n\n${snap.docs.map(d => `• ${d.id}`).join("\n")}` });
+      }
+
+      // List users — no LLM needed
+      if (m.match(/list.*user|all user|show.*user|who.*on the team|staff/)) {
+        const snap = await db.collection("users").get();
+        if (snap.empty) return res.json({ ok: true, reply: "No users found." });
+        const lines = snap.docs.map(d => { const u = d.data(); return `• ${u.name || "—"} (${u.email || d.id}) — ${u.role || "user"}`; }).join("\n");
+        return res.json({ ok: true, reply: `👥 Users (${snap.size}):\n\n${lines}` });
+      }
+
+      // All other questions — fetch full live data and let LLM answer
+      console.log("Fetching SARN context for chat...");
+      const context = await fetchSARNContext();
+
+      const systemPrompt = `You are SARN Admin Assistant with full access to live data from the SARN system.
+
+SARN manages batch SDS (Safety Data Sheet) records. Each record goes through stages:
+- ASSIGN_PENDING: not yet assigned to any user
+- IN_PROGRESS: assigned to a user, currently being verified
+- BILLING_READY: verification complete, waiting for billing
+- COMPLETED: fully done
+
+Answer the admin's question using ONLY the data provided below. Be specific, accurate, and concise.
+Format numbers clearly. If asked about a specific sheet, find it in the data and report exactly.
+
+LIVE DATA SNAPSHOT:
+${JSON.stringify(context, null, 2)}`;
+
+      const { reply, usage } = await callGroq(systemPrompt, message);
+      return res.json({ ok: true, reply, usage });
+    }
+
+    return res.json({ ok: false, error: "Send a message or upload a PDF" });
+  } catch (err) {
+    console.error("CHAT ERROR:", err.message);
+    res.json({ ok: false, error: err.message || "Something went wrong. Please try again." });
   }
 });
 

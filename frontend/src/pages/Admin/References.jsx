@@ -26,6 +26,7 @@ export default function References() {
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [showChart, setShowChart] = useState(false);
 
   /* ---------------- LOAD SDS SHEETS ---------------- */
   useEffect(() => {
@@ -211,6 +212,27 @@ async function loadProductivity() {
   Load Report
 </button>
 
+<button
+  onClick={() => {
+    if (!stats) {
+      alert("Load Report first");
+      return;
+    }
+    setShowChart(prev => !prev);
+  }}
+  style={{
+    padding: "10px 16px",
+    height: 40,
+    background: "#2563eb",
+    color: "#fff",
+    border: "none",
+    borderRadius: 6,
+    cursor: "pointer",
+  }}
+>
+  Performance Report
+</button>
+
       {loading && <p>Loading...</p>}
       {stats && (
   <div
@@ -269,6 +291,10 @@ async function loadProductivity() {
     </table>
 
     <br />
+
+    {showChart && (
+      <PieChart users={stats.users} />
+    )}
   </>
 )}
 
@@ -347,6 +373,76 @@ async function loadProductivity() {
         <p>No references found for this sheet.</p>
       )}
     </AdminLayout>
+  );
+}
+
+/* ---------------- PIE CHART ---------------- */
+
+const COLORS = [
+  "#2563eb", "#16a34a", "#dc2626", "#f59e0b",
+  "#7c3aed", "#0891b2", "#db2777", "#65a30d",
+];
+
+function PieChart({ users }) {
+  const data = users.filter(u => u.completed > 0);
+
+  if (data.length === 0) {
+    return <p style={{ color: "#64748b" }}>No completed records to display.</p>;
+  }
+
+  const total = data.reduce((sum, u) => sum + u.completed, 0);
+  const cx = 180;
+  const cy = 180;
+  const r = 150;
+
+  let startAngle = -Math.PI / 2;
+  const slices = data.map((u, i) => {
+    const angle = (u.completed / total) * 2 * Math.PI;
+    const endAngle = startAngle + angle;
+    const x1 = cx + r * Math.cos(startAngle);
+    const y1 = cy + r * Math.sin(startAngle);
+    const x2 = cx + r * Math.cos(endAngle);
+    const y2 = cy + r * Math.sin(endAngle);
+    const mid = startAngle + angle / 2;
+    const lx = cx + (r * 0.65) * Math.cos(mid);
+    const ly = cy + (r * 0.65) * Math.sin(mid);
+    const large = angle > Math.PI ? 1 : 0;
+    const path = `M ${cx} ${cy} L ${x1} ${y1} A ${r} ${r} 0 ${large} 1 ${x2} ${y2} Z`;
+    const slice = { path, lx, ly, color: COLORS[i % COLORS.length], u, pct: ((u.completed / total) * 100).toFixed(1) };
+    startAngle = endAngle;
+    return slice;
+  });
+
+  return (
+    <div style={{ marginTop: 24, marginBottom: 24 }}>
+      <h3>Performance Report — Completed Work per User</h3>
+      <div style={{ display: "flex", gap: 40, alignItems: "center", flexWrap: "wrap" }}>
+        <svg width={360} height={360}>
+          {slices.map((s, i) => (
+            <g key={i}>
+              <path d={s.path} fill={s.color} stroke="#fff" strokeWidth={2} />
+              {parseFloat(s.pct) > 5 && (
+                <text x={s.lx} y={s.ly} textAnchor="middle" dominantBaseline="middle"
+                  fontSize={12} fontWeight={600} fill="#fff">
+                  {s.pct}%
+                </text>
+              )}
+            </g>
+          ))}
+        </svg>
+
+        <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          {slices.map((s, i) => (
+            <div key={i} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+              <div style={{ width: 16, height: 16, borderRadius: 3, background: s.color, flexShrink: 0 }} />
+              <span style={{ fontSize: 14 }}>
+                <b>{s.u.userId}</b> — {s.u.completed} completed ({s.pct}%)
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 

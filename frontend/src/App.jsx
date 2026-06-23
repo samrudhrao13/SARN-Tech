@@ -53,6 +53,7 @@ import BatchCompleted from "./pages/UserBatch/BatchCompleted";
 import SuperAdminDashboard from "./pages/SuperAdmin/SuperAdminDashboard";
 import UserList from "./pages/SuperAdmin/UserList";
 import AttendancePage from "./pages/SuperAdmin/AttendancePage";
+import SuperAdminReports from "./pages/SuperAdmin/Reports";
 
 /* ================= LAYOUTS ================= */
 import AdminLayout from "./layouts/AdminLayout";
@@ -163,6 +164,16 @@ export default function App() {
           <ProtectedSuperAdmin>
             <SuperAdminLayout>
               <AttendancePage />
+            </SuperAdminLayout>
+          </ProtectedSuperAdmin>
+        }
+      />
+      <Route
+        path="/super-admin/reports"
+        element={
+          <ProtectedSuperAdmin>
+            <SuperAdminLayout>
+              <SuperAdminReports />
             </SuperAdminLayout>
           </ProtectedSuperAdmin>
         }

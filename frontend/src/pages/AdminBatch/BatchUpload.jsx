@@ -206,12 +206,22 @@ export default function BatchUpload() {
           <li>Chemical Name</li>
           <li>Manufacturer Name</li>
           <li>Revision Date</li>
+          <li>Site Approval Status</li>
           <li>Site Name</li>
           <li>Site SDS #</li>
+          <li>Manufacturer Country</li>
           <li>Language</li>
-          <li>New Repository</li>
+          <li>Verified Date</li>
+          <li>PDF Uploaded?</li>
+          <li>Status (PDF QC Status)</li>
+          <li>Repository No.</li>
           <li>Product Code</li>
-          <li>Pdf File Name</li>
+          <li>PDF File Name</li>
+          <li>QC Complete By</li>
+          <li>Search Verification Action</li>
+          <li>Email Address / Website</li>
+          <li>Search Completed By</li>
+          <li>Comments</li>
         </ul>
       </div>
     </div>

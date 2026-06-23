@@ -210,64 +210,40 @@ export default function BatchWorkflow() {
           Record Details
         </h3>
 
-        <InfoRow
-          label="Chemical Name"
-          value={
-            c.chemicalName
-          }
-        />
-
-        <InfoRow
-          label="Manufacturer"
-          value={
-            c.manufacturerName
-          }
-        />
-
-        <InfoRow
-          label="Revision Date"
-          value={
-            c.revisionDate
-          }
-        />
-
-        <InfoRow
-          label="Site Name"
-          value={c.siteName}
-        />
-
-        <InfoRow
-          label="Site SDS #"
-          value={
-            c.siteSdsNumber
-          }
-        />
-
-        <InfoRow
-          label="Language"
-          value={c.language}
-        />
-
-        <InfoRow
-          label="Repository"
-          value={
-            c.newRepository
-          }
-        />
-
-        <InfoRow
-          label="Product Code"
-          value={
-            c.productCode
-          }
-        />
-
-        <InfoRow
-          label="PDF File"
-          value={
-            c.pdfFileName
-          }
-        />
+        <InfoRow label="Chemical Name"           value={c.chemicalName} />
+        <InfoRow label="Manufacturer"            value={c.manufacturerName} />
+        <InfoRow label="Manufacturer Country"    value={c.manufacturerCountry} />
+        <InfoRow label="Revision Date"           value={c.revisionDate} />
+        <InfoRow label="Verified Date"           value={c.verifiedDate} />
+        <InfoRow label="Site Name"               value={c.siteName} />
+        <InfoRow label="Site Approval Status"    value={c.siteApprovalStatus} />
+        <InfoRow label="Site SDS #"              value={c.siteSdsNumber} />
+        {c.siteSdsLink ? (
+          <div style={{ display: "flex", marginBottom: 12 }}>
+            <div style={{ width: 180, fontWeight: 600 }}>Site SDS Link</div>
+            <a href={c.siteSdsLink} target="_blank" rel="noreferrer" style={{ color: "#2563eb", wordBreak: "break-all" }}>{c.siteSdsLink}</a>
+          </div>
+        ) : (
+          <InfoRow label="Site SDS Link" value="-" />
+        )}
+        <InfoRow label="Language"                value={c.language} />
+        <InfoRow label="Repository"              value={c.newRepository} />
+        <InfoRow label="Product Code"            value={c.productCode} />
+        <InfoRow label="PDF File"                value={c.pdfFileName} />
+        <InfoRow label="PDF Uploaded"            value={c.pdfUploaded} />
+        <InfoRow label="PDF QC Status"           value={c.pdfQcStatus} />
+        <InfoRow label="QC Complete By"          value={c.qcCompleteBy} />
+        <InfoRow label="Search Completed By"     value={c.searchCompletedBy} />
+        <InfoRow label="Search Verification"     value={c.searchVerificationAction} />
+        {c.emailWebsite ? (
+          <div style={{ display: "flex", marginBottom: 12 }}>
+            <div style={{ width: 180, fontWeight: 600 }}>Email / Website</div>
+            <a href={c.emailWebsite} target="_blank" rel="noreferrer" style={{ color: "#2563eb", wordBreak: "break-all" }}>{c.emailWebsite}</a>
+          </div>
+        ) : (
+          <InfoRow label="Email / Website" value="-" />
+        )}
+        <InfoRow label="Comments"                value={c.comments} />
       </div>
 
       {/* ================= VERIFICATION ================= */}

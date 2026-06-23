@@ -49,6 +49,13 @@ export default function SuperAdminSidebar() {
         Attendance
       </button>
 
+      <button
+        onClick={() => (window.location.href = "/super-admin/reports")}
+        style={sidebarBtn}
+      >
+        Reports
+      </button>
+
       <button onClick={handleLogout} style={logoutBtn}>
         Logout
       </button>

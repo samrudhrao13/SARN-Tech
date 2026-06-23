@@ -1,6 +1,7 @@
 // src/layouts/AdminLayout.jsx
 import React from "react";
 import AdminSidebar from "../components/AdminSidebar";
+import ChatBot from "../components/ChatBot";
 
 export default function AdminLayout({ children }) {
   return (
@@ -29,6 +30,9 @@ export default function AdminLayout({ children }) {
       >
         {children}
       </div>
+
+      {/* Floating Translation Assistant */}
+      <ChatBot />
     </div>
   );
 }

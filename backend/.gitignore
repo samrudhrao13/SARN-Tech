@@ -67,3 +67,8 @@ node_modules/
 
 # dataconnect generated files
 .dataconnect
+
+# Service account keys
+*.json
+!package.json
+!package-lock.json

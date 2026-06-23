@@ -444,7 +444,8 @@ const pagedRecords =
   <div
   style={{
     width: "100%",
-    overflowX: "auto",
+    overflow: "auto",
+    maxHeight: "calc(100vh - 260px)",
     border: "1px solid #ddd",
     borderRadius: "6px",
   }}
@@ -455,25 +456,42 @@ const pagedRecords =
   style={{
     width: "100%",
     borderCollapse: "collapse",
+    minWidth: "2400px",
   }}
 >
           <thead>
             <tr
               style={{
                 background: "#f1f5f9",
+                position: "sticky",
+                top: 0,
+                zIndex: 2,
               }}
             >
               <th>Select</th>
-              <th>New Repository</th>
+              <th>Repository No.</th>
               <th>Duplicate</th>
               <th>Chemical Name</th>
-              <th>Manufacturer</th>
-              <th>Language</th>
-              <th>Site Name</th>
+              <th>Manufacturer Name</th>
               <th>Revision Date</th>
-              <th>Status</th>
+              <th>Site Approval Status</th>
+              <th>Site Name</th>
+              <th>Site SDS #</th>
+              <th>Manufacturer Country</th>
+              <th>Language</th>
+              <th>Verified Date</th>
+              <th>PDF Uploaded?</th>
+              <th>Status (PDF QC Status)</th>
+              <th>Product Code</th>
+              <th>PDF File Name</th>
+              <th>QC Complete By</th>
+              <th>Search Verification Action</th>
+              <th>Email / Website</th>
+              <th>Search Completed By</th>
+              <th>Comments</th>
+              <th>Workflow Status</th>
               <th>Assigned To</th>
-            <th>Action</th>
+              <th>Action</th>
             </tr>
           </thead>
 
@@ -547,9 +565,11 @@ const pagedRecords =
 >
   {r.manufacturerName}
 </td>
-                <td>
-                {r.language || "-"}
-                </td>
+
+                <td>{r.revisionDate || "-"}</td>
+
+                <td>{r.siteApprovalStatus || "-"}</td>
+
                 <td
   style={{
     maxWidth: "180px",
@@ -563,8 +583,82 @@ const pagedRecords =
 </td>
 
                 <td>
-                  {r.revisionDate}
-                </td>
+  {r.siteSdsLink ? (
+    <a href={r.siteSdsLink} target="_blank" rel="noreferrer">
+      {r.siteSdsNumber || r.siteSdsLink}
+    </a>
+  ) : (
+    r.siteSdsNumber || "-"
+  )}
+</td>
+
+                <td>{r.manufacturerCountry || "-"}</td>
+
+                <td>{r.language || "-"}</td>
+
+                <td>{r.verifiedDate || "-"}</td>
+
+                <td>{r.pdfUploaded || "-"}</td>
+
+                <td>{r.pdfQcStatus || "-"}</td>
+
+                <td>{r.productCode || "-"}</td>
+
+                <td
+  style={{
+    maxWidth: "180px",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  }}
+  title={r.pdfFileName}
+>
+  {r.pdfFileName || "-"}
+</td>
+
+                <td>{r.qcCompleteBy || "-"}</td>
+
+                <td
+  style={{
+    maxWidth: "180px",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  }}
+  title={r.searchVerificationAction}
+>
+  {r.searchVerificationAction || "-"}
+</td>
+
+                <td
+  style={{
+    maxWidth: "180px",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  }}
+  title={r.emailWebsite}
+>
+  {r.emailWebsite ? (
+    <a href={r.emailWebsite.startsWith("http") ? r.emailWebsite : `https://${r.emailWebsite}`} target="_blank" rel="noreferrer" style={{ color: "#2563eb" }}>
+      {r.emailWebsite}
+    </a>
+  ) : "-"}
+</td>
+
+                <td>{r.searchCompletedBy || "-"}</td>
+
+                <td
+  style={{
+    maxWidth: "200px",
+    whiteSpace: "nowrap",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+  }}
+  title={r.comments}
+>
+  {r.comments || "-"}
+</td>
 
                 <td>{r.status}</td>
 
@@ -575,10 +669,27 @@ const pagedRecords =
 <td>
   {r.assignedTo ? (
     <button
-      onClick={() => {
-        setSelected([
-          r.recordId,
-        ]);
+      onClick={async () => {
+        if (!assignUser) {
+          return setMsg("Select a user first");
+        }
+        try {
+          setMsg("Reassigning...");
+          const res = await api.post(
+            "/admin/batch/assign",
+            {
+              sheet,
+              recordIds: [r.recordId],
+              userId: assignUser,
+            }
+          );
+          if (res.data.ok) {
+            setMsg("1 record reassigned");
+            loadRecords();
+          }
+        } catch {
+          setMsg("Reassignment failed");
+        }
       }}
       style={{
         background:
