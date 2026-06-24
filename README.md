@@ -80,8 +80,8 @@ SARN Final/
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/samrudhrao13/SARN.git
-cd SARN
+git clone https://github.com/samrudhrao13/SARN-Tech.git
+cd SARN-Tech
 ```
 
 ### 2. Install Backend Dependencies
