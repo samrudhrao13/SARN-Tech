@@ -69,6 +69,7 @@ export default function AdminSidebar() {
             <SidebarBtn label="Workflow Control" path="/admin/workflow" active={isActive("/admin/workflow")} />
             <SidebarBtn label="Database" path="/admin/database" active={isActive("/admin/database")} />
             <SidebarBtn label="Billing" path="/admin/sds/billing" active={isActive("/admin/sds/billing")} />
+            <SidebarBtn label="Reports" path="/admin/sds/reports" active={isActive("/admin/sds/reports")} />
             <LogoutBtn />
           </>
         )}
@@ -82,6 +83,7 @@ export default function AdminSidebar() {
             <SidebarBtn label="Workflow Control" path="/admin/dq/workflow" active={isActive("/admin/dq/workflow")} />
             <SidebarBtn label="Database" path="/admin/dq/database" active={isActive("/admin/dq/database")} />
             <SidebarBtn label="Billing" path="/admin/dq/billing" active={isActive("/admin/dq/billing")} />
+            <SidebarBtn label="Reports" path="/admin/dq/reports" active={isActive("/admin/dq/reports")} />
             <LogoutBtn />
           </>
         )}

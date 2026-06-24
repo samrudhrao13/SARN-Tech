@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import AdminLayout from "../../layouts/AdminLayout";
 import api from "../../config/apiClient";
 
 const PAGE_SIZE = 100;
@@ -69,7 +68,7 @@ export default function DQDatabase() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <h1 style={{ marginBottom: 14 }}>📂 DQ Database</h1>
 
       {/* HEADER CONTROLS */}
@@ -194,7 +193,7 @@ export default function DQDatabase() {
           Next
         </button>
       </div>
-    </AdminLayout>
+    </>
   );
 }
 

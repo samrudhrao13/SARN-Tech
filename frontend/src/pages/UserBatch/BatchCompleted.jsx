@@ -76,9 +76,8 @@ const pageSize = 100;
   return (
   <div
     style={{
-      marginLeft: "160px",
       padding: "20px",
-      width: "calc(100% - 220px)",
+      width: "100%",
       boxSizing: "border-box",
       minHeight: "100vh",
     }}

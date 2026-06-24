@@ -1,12 +1,11 @@
 import React from "react";
 import { useNavigate } from "react-router-dom";
-import AdminLayout from "../../layouts/AdminLayout";
 
 export default function BatchDashboard() {
   const navigate = useNavigate();
 
   return (
-    <AdminLayout>
+    <>
       <h1 style={{ marginBottom: 8 }}>
         Batch Dashboard
       </h1>
@@ -62,7 +61,7 @@ export default function BatchDashboard() {
           }
         />
       </div>
-    </AdminLayout>
+    </>
   );
 }
 

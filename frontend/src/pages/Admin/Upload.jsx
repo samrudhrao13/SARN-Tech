@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import AdminLayout from "../../layouts/AdminLayout";
 import api from "../../config/apiClient";
 
 
@@ -61,7 +60,7 @@ export default function Upload() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <h1 style={{ marginBottom: 20 }}>Upload SDS Excel</h1>
 
       <div
@@ -110,7 +109,7 @@ export default function Upload() {
           </p>
         )}
       </div>
-    </AdminLayout>
+    </>
   );
 }
 

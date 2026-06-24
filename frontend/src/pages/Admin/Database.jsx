@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import AdminLayout from "../../layouts/AdminLayout";
 import { useNavigate } from "react-router-dom";
 import api from "../../config/apiClient";
 
@@ -72,7 +71,7 @@ export default function SDSDatabase() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <h1>SDS Database</h1>
 
       {/* -------- FILTER BAR -------- */}
@@ -182,7 +181,7 @@ export default function SDSDatabase() {
           </button>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }
 

@@ -1,6 +1,5 @@
 import React, { useEffect, useState, useCallback } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import UserLayout from "../../layouts/UserLayout";
 import api from "../../config/apiClient";
 
 /* REAL FORMS */
@@ -42,11 +41,7 @@ export default function WorkflowUserView() {
 
   /* ---------- SESSION GUARD ---------- */
   if (!userId) {
-    return (
-      <UserLayout>
-        <p style={{ color: "red" }}>Session expired. Please login again.</p>
-      </UserLayout>
-    );
+    return <p style={{ color: "red" }}>Session expired. Please login again.</p>;
   }
 
   /* ---------- FETCH (ADMIN PARITY) ---------- */
@@ -73,24 +68,24 @@ export default function WorkflowUserView() {
   }, [loadWorkflow]);
 
   if (loading) {
-    return <UserLayout>Loading…</UserLayout>;
+    return <p>Loading…</p>;
   }
 
   if (!workflow) {
     return (
-      <UserLayout>
+      <>
         <h2>Reference not found</h2>
         <button onClick={() => navigate("/user/assigned-sds")}>
           Back to Assigned Work
         </button>
-      </UserLayout>
+      </>
     );
   }
 
   const stage = workflow.currentStage || "search";
 
   return (
-    <UserLayout>
+    <>
       <button
         onClick={() => navigate("/user/assigned-sds")}
         style={{ marginBottom: 20 }}
@@ -163,7 +158,7 @@ export default function WorkflowUserView() {
           </p>
         </Block>
       )}
-    </UserLayout>
+    </>
   );
 }
 

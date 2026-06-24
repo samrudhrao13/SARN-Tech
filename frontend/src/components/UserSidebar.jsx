@@ -128,6 +128,12 @@ const process = location.pathname.startsWith("/user/dq")
           />
 
           <SidebarBtn
+            label="Completed DQ Work"
+            path="/user/dq/completed"
+            active={isActive("/user/dq/completed")}
+          />
+
+          <SidebarBtn
             label="Profile"
             path="/user/profile"
             active={isActive("/user/profile")}

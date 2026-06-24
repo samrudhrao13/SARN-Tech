@@ -14,6 +14,7 @@ import References from "./pages/Admin/References";
 import Database from "./pages/Admin/Database";
 import WorkflowDetails from "./pages/Admin/WorkflowDetails";
 import SDSBilling from "./pages/Admin/SDSBilling";
+import SDSReports from "./pages/Admin/SDSReports";
 
 /* ================= ADMIN (DQ) ================= */
 import DQDashboard from "./pages/AdminDQ/DQDashboard";
@@ -43,6 +44,7 @@ import CompletedSDSWork from "./pages/User/CompletedSDSWork";
 /* ================= USER (DQ) ================= */
 import AssignedDQWork from "./pages/UserDQ/AssignedDQWork";
 import DQWorkForm from "./pages/UserDQ/DQWorkForm";
+import CompletedDQWork from "./pages/UserDQ/CompletedDQWork";
 
 /* ================= USER (BATCH) ================= */
 import BatchTasks from "./pages/UserBatch/BatchTasks";
@@ -256,6 +258,7 @@ export default function App() {
         />
 
       <Route path="/admin/sds/billing" element={<ProtectedAdmin><AdminLayout><SDSBilling /></AdminLayout></ProtectedAdmin>} />
+      <Route path="/admin/sds/reports" element={<ProtectedAdmin><AdminLayout><SDSReports /></AdminLayout></ProtectedAdmin>} />
 
       {/* ===== ADMIN (DQ) ===== */}
       <Route path="/admin/dq/dashboard" element={<ProtectedAdmin><AdminLayout><DQDashboard /></AdminLayout></ProtectedAdmin>} />
@@ -297,6 +300,7 @@ export default function App() {
       {/* ===== USER (DQ) ===== */}
       <Route path="/user/dq/tasks" element={<ProtectedUser><UserLayout><AssignedDQWork /></UserLayout></ProtectedUser>} />
       <Route path="/user/dq/work/:refId" element={<ProtectedUser><UserLayout><DQWorkForm /></UserLayout></ProtectedUser>} />
+      <Route path="/user/dq/completed" element={<ProtectedUser><UserLayout><CompletedDQWork /></UserLayout></ProtectedUser>} />
 
         {/* ===== USER (BATCH) ===== */}
 

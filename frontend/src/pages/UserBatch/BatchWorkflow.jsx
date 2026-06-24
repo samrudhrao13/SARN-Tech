@@ -160,9 +160,7 @@ export default function BatchWorkflow() {
   return (
     <div
       style={{
-        marginLeft: "160px",
         padding: "20px",
-        width: "calc(100% - 220px)",
         boxSizing: "border-box",
       }}
     >
@@ -175,9 +173,7 @@ export default function BatchWorkflow() {
   return (
     <div
       style={{
-        marginLeft: "160px",
         padding: "20px",
-        width: "calc(100% - 220px)",
         boxSizing: "border-box",
       }}
     >
@@ -192,15 +188,13 @@ export default function BatchWorkflow() {
  return (
   <div
     style={{
-      marginLeft: "160px",
       padding: "20px",
-      width: "calc(100% - 220px)",
       boxSizing: "border-box",
       minHeight: "100vh",
     }}
   >
       <h2>
-        Batch Verification
+        Batch Verification  -  {c.newRepository || recordId}
       </h2>
 
       {/* ================= RECORD DETAILS ================= */}

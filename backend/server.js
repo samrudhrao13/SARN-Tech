@@ -1552,6 +1552,12 @@ app.post(
 
       }
 
+      /* ===== LANGUAGE ===== */
+      const rawLang = String(req.body.language || "English").trim();
+      const langOther = String(req.body.languageOther || "").trim();
+      const resolvedLanguage = rawLang === "Others" && langOther ? `Others: ${langOther}` : rawLang || "English";
+      const isMultilingual = resolvedLanguage.toLowerCase() !== "english";
+
       /* ===== SEARCH DATA ===== */
       const refDoc = db
         .collection("sds_sheets")
@@ -1576,6 +1582,9 @@ app.post(
         notPublishableReason: notPublishable
           ? req.body.notPublishableReason || ""
           : "",
+
+        language: resolvedLanguage,
+        isMultilingual,
 
         pdfUrl,
 
@@ -1611,9 +1620,12 @@ await db
   .doc(sheet)
   .collection("references")
   .doc(refId)
-  .set(
+  .update(
     {
       search: searchData,
+
+      "common.language": resolvedLanguage,
+      "common.isMultilingual": isMultilingual,
 
       currentStage: nextStage,
       workflowStatus,
@@ -1623,8 +1635,7 @@ await db
       holdUntil,
 
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-    },
-    { merge: true }
+    }
   );
 
 return res.json({
@@ -1881,17 +1892,18 @@ app.get("/user/sds-tasks", async (req, res) => {
         if (
           stageBlock &&
           stageBlock.assignedTo &&
-          stageBlock.assignedTo.toUpperCase() === userId
+          stageBlock.assignedTo.toUpperCase() === userId &&
+          stageBlock.status !== "completed"
         ) {
           const common = d.common || {};
 
-        tasks.push({
+          tasks.push({
             company: "SARN",
             sheet,
             referenceId: refDoc.id,
             stage,
             status: stageBlock.status || "pending",
-
+            assignedAt: stageBlock.assignedAt || d.updatedAt || null,
             revisionDate: common.revisionDate || "",
             verificationDate: common.verificationDate || "",
           });
@@ -2061,12 +2073,15 @@ app.get("/user/completed-sds-tasks", async (req, res) => {
           supersede.completedBy === userId ||
           transcription.completedBy === userId
         ) {
+          const completedAt =
+            transcription.completedAt || supersede.completedAt || search.completedAt || d.updatedAt || null;
           tasks.push({
             referenceId: doc.id,
             company: "SARN",
             sheet,
             stage: d.currentStage || "search",
             status: "completed",
+            completedAt,
           });
         }
       });
@@ -2278,6 +2293,11 @@ app.post("/sds/workflow/update-status", async (req, res) => {
 
     const data = snap.data();
 
+const rawLang = String(req.body.language || "English").trim();
+const langOther = String(req.body.languageOther || "").trim();
+const resolvedLanguage = rawLang === "Others" && langOther ? `Others: ${langOther}` : rawLang || "English";
+const isMultilingual = resolvedLanguage.toLowerCase() !== "english";
+
 const updatedSearch = {
   ...(data.search || {}),
 
@@ -2305,6 +2325,9 @@ const updatedSearch = {
     req.body.notPublishable === true ||
     req.body.notPublishable === "true",
 
+  language: resolvedLanguage,
+  isMultilingual,
+
   draftSaved: true,
 
   statusUpdatedBy: userId,
@@ -2316,12 +2339,13 @@ console.log(
   JSON.stringify(updatedSearch, null, 2)
 );
 
-await refDoc.set(
+await refDoc.update(
   {
     search: updatedSearch,
+    "common.language": resolvedLanguage,
+    "common.isMultilingual": isMultilingual,
     updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-  },
-  { merge: true }
+  }
 );
 
     return res.json({ ok: true });
@@ -3065,6 +3089,7 @@ app.get("/user/dq-tasks", async (req, res) => {
           repoId: d.repoId || refDoc.id,
           status: "assigned",
           assignedTo: d.assignedTo,
+          assignedAt: d.assignedAt || d.updatedAt || null,
         });
       });
     }
@@ -3080,6 +3105,45 @@ app.get("/user/dq-tasks", async (req, res) => {
       ok: false,
       error: "Failed to load user DQ tasks",
     });
+  }
+});
+
+// =====================================================
+// USER – COMPLETED DQ TASKS
+// =====================================================
+app.get("/user/completed-dq-tasks", async (req, res) => {
+  try {
+    const userId = String(req.query.userId || "").trim();
+    if (!userId) return res.json({ ok: false, error: "UserId required" });
+
+    const tasks = [];
+    const sheetsSnap = await db.collection("dq_sheets").get();
+
+    for (const sheetDoc of sheetsSnap.docs) {
+      const sheetId = sheetDoc.id;
+      const refsSnap = await sheetDoc.ref.collection("references").get();
+
+      refsSnap.forEach(refDoc => {
+        const d = refDoc.data();
+        if (d.assignedTo !== userId) return;
+        if (!d.billingReady) return;
+
+        tasks.push({
+          sheet: sheetId,
+          repoId: d.repoId || refDoc.id,
+          status: "completed",
+          assignedTo: d.assignedTo,
+          completedAt: d.updatedAt || null,
+          dateVerified: d.dateVerified || "",
+        });
+      });
+    }
+
+    tasks.sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0));
+    return res.json({ ok: true, tasks, total: tasks.length });
+  } catch (err) {
+    console.error("COMPLETED DQ TASKS ERROR:", err);
+    return res.status(500).json({ ok: false, error: err.message });
   }
 });
 
@@ -5087,250 +5151,299 @@ app.get("/admin/firestore/search", async (req, res) => {
 app.get("/admin/report/superadmin-pdf", async (req, res) => {
   try {
     const period = req.query.period || "week";
-    const IST_MS = 5.5 * 3600000;
-    const now = new Date();
-    const nowIST = new Date(now.getTime() + IST_MS);
-    let fromDate, periodLabel;
+    const now    = new Date();
+    const toDate = new Date(now); toDate.setHours(23, 59, 59, 999);
+    let fromDate = null, periodLabel;
 
     if (period === "today") {
-      const istMidnight = new Date(nowIST); istMidnight.setUTCHours(0, 0, 0, 0);
-      fromDate = new Date(istMidnight.getTime() - IST_MS);
-      periodLabel = `Daily Summary — ${toISTDate(now.getTime())}`;
+      fromDate = new Date(now); fromDate.setHours(0, 0, 0, 0);
+      periodLabel = `Daily Summary — ${now.toDateString()}`;
     } else if (period === "month") {
-      const istFirst = new Date(Date.UTC(nowIST.getUTCFullYear(), nowIST.getUTCMonth(), 1));
-      fromDate = new Date(istFirst.getTime() - IST_MS);
-      const monthNames = ["January","February","March","April","May","June","July","August","September","October","November","December"];
-      periodLabel = `Monthly Summary — ${monthNames[nowIST.getUTCMonth()]} ${nowIST.getUTCFullYear()}`;
+      fromDate = new Date(now.getFullYear(), now.getMonth(), 1);
+      const MN = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+      periodLabel = `Monthly Summary — ${MN[now.getMonth()]} ${now.getFullYear()}`;
     } else {
-      const istMidnight = new Date(nowIST); istMidnight.setUTCHours(0, 0, 0, 0);
-      const istWeekStart = new Date(istMidnight.getTime() - 6 * 86400000);
-      fromDate = new Date(istWeekStart.getTime() - IST_MS);
-      periodLabel = `Weekly Summary — Last 7 Days`;
-    }
-    const dayEnd = new Date(now.getTime() + 86400000);
-
-    function formatBusiness(sheetId) {
-      return sheetId.replace(/_/g, " ").toLowerCase().replace(/\b\w/g, c => c.toUpperCase());
+      fromDate = new Date(now); fromDate.setDate(fromDate.getDate() - 6); fromDate.setHours(0, 0, 0, 0);
+      periodLabel = "Weekly Summary — Last 7 Days";
     }
 
-    // Fetch all user names up front
+    // user name lookup
     const usersSnap = await db.collection("users").get();
-    const userNames = {};
-    usersSnap.forEach(d => { userNames[d.id] = d.data().name || d.id; });
+    const nameMap = {};
+    usersSnap.forEach(d => { nameMap[d.id] = d.data().name || d.data().email || d.id; });
 
-    // userMap: userId → { name, taskTypes: Set, assigned, completed, firstDate }
-    // businessMap: sheetId → { name, assigned, completed }
-    const userMap = {};
-    const businessMap = {};
-
-    function ensureUser(uid) {
-      if (!userMap[uid]) userMap[uid] = { name: userNames[uid] || uid, taskTypes: new Set(), assigned: 0, completed: 0, firstDate: null };
-    }
-    function ensureBusiness(sheetId) {
-      if (!businessMap[sheetId]) businessMap[sheetId] = { name: formatBusiness(sheetId), assigned: 0, completed: 0 };
-    }
-    function trackDate(uid, d) {
-      if (d && (!userMap[uid].firstDate || d < userMap[uid].firstDate)) userMap[uid].firstDate = d;
-    }
-
-    // 1. BATCH
-    const batchSheetsSnap = await db.collection("batch_sheets").get();
-    for (const sheetDoc of batchSheetsSnap.docs) {
-      const recsSnap = await sheetDoc.ref.collection("records").get();
-      recsSnap.forEach(doc => {
-        const d = doc.data();
-        const v = d.verification || {};
-        if (!v.assignedTo) return;
-        const uid = v.assignedTo.toUpperCase();
-        const assignedAt = v.assignedAt?.toDate ? v.assignedAt.toDate() : null;
-        const completedAt = v.completedAt?.toDate ? v.completedAt.toDate() : null;
-        const inPeriod = (assignedAt && assignedAt >= fromDate && assignedAt <= dayEnd) ||
-                         (completedAt && completedAt >= fromDate && completedAt <= dayEnd);
-        if (!inPeriod) return;
-        ensureUser(uid); ensureBusiness(sheetDoc.id);
-        userMap[uid].taskTypes.add("Batch");
-        userMap[uid].assigned++;
-        businessMap[sheetDoc.id].assigned++;
-        trackDate(uid, assignedAt || completedAt);
-        if (v.status === "completed") { userMap[uid].completed++; businessMap[sheetDoc.id].completed++; }
-      });
+    // ── Per (user × business) stats ──────────────────────────────────────────
+    // Key: `uid|||sheetId` — one entry per unique user+business combination.
+    // This gives one PDF row per user per business with exact counts for that pair.
+    const ubStats = {};
+    function getUbs(uid, sheetId) {
+      const k = `${uid}|||${sheetId}`;
+      if (!ubStats[k]) ubStats[k] = {
+        uid, sheetId,
+        searchE:0, searchML:0, supersedeE:0, supersedeML:0,
+        transcriptionE:0, transcriptionML:0, billingE:0, billingML:0,
+        dqAssigned:0, dqCompleted:0,
+        batchAssigned:0, batchCompleted:0,
+      };
+      return ubStats[k];
     }
 
-    // 2. SDS
-    const sdsSheetsSnap = await db.collection("sds_sheets").get();
     const SDS_STAGES = ["search", "supersede", "transcription", "billing"];
+
+    // ── SDS ──────────────────────────────────────────────────────────────────
+    const sdsSheetsSnap = await db.collection("sds_sheets").get();
     for (const sheetDoc of sdsSheetsSnap.docs) {
       const refsSnap = await sheetDoc.ref.collection("references").get();
-      refsSnap.forEach(doc => {
-        const d = doc.data();
+      for (const recDoc of refsSnap.docs) {
+        const d = recDoc.data();
+        const rawLang = String(d.common?.language || d.search?.language || "english").toLowerCase().trim();
+        const suffix  = (!rawLang || rawLang === "english") ? "E" : "ML";
         for (const stage of SDS_STAGES) {
-          const s = d[stage] || {};
-          if (!s.assignedTo) continue;
-          const uid = s.assignedTo.toUpperCase();
-          const assignedAt = s.assignedAt?.toDate ? s.assignedAt.toDate() : null;
+          const s = d[stage];
+          if (!s || !s.assignedTo) continue;
           const completedAt = s.completedAt?.toDate ? s.completedAt.toDate() : null;
-          const inPeriod = (assignedAt && assignedAt >= fromDate && assignedAt <= dayEnd) ||
-                           (completedAt && completedAt >= fromDate && completedAt <= dayEnd);
-          if (!inPeriod) continue;
-          ensureUser(uid); ensureBusiness(sheetDoc.id);
-          const label = stage === "supersede" ? "Supersede" : stage.charAt(0).toUpperCase() + stage.slice(1);
-          userMap[uid].taskTypes.add(`SDS ${label}`);
-          userMap[uid].assigned++;
-          businessMap[sheetDoc.id].assigned++;
-          trackDate(uid, assignedAt || completedAt);
-          if (s.status === "completed") { userMap[uid].completed++; businessMap[sheetDoc.id].completed++; }
+          if (!completedAt) continue;
+          if (fromDate && (completedAt < fromDate || completedAt > toDate)) continue;
+          getUbs(s.assignedTo, sheetDoc.id)[`${stage}${suffix}`]++;
         }
-      });
+      }
     }
 
-    // 3. DQ
+    // ── DQ ───────────────────────────────────────────────────────────────────
     const dqSheetsSnap = await db.collection("dq_sheets").get();
     for (const sheetDoc of dqSheetsSnap.docs) {
       const refsSnap = await sheetDoc.ref.collection("references").get();
-      refsSnap.forEach(doc => {
-        const d = doc.data();
-        if (!d.assignedTo || d.assignedTo === "__FORCE_BILLED__") return;
-        const uid = d.assignedTo.toUpperCase();
-        const assignedAt = d.assignedAt ? new Date(d.assignedAt) : null;
-        const completedAt = d.billingReady && d.updatedAt ? new Date(d.updatedAt) : null;
-        const inPeriod = (assignedAt && assignedAt >= fromDate && assignedAt <= dayEnd) ||
-                         (completedAt && completedAt >= fromDate && completedAt <= dayEnd);
-        if (!inPeriod) return;
-        ensureUser(uid); ensureBusiness(sheetDoc.id);
-        userMap[uid].taskTypes.add("DQ");
-        userMap[uid].assigned++;
-        businessMap[sheetDoc.id].assigned++;
-        trackDate(uid, assignedAt || completedAt);
-        if (d.billingReady) { userMap[uid].completed++; businessMap[sheetDoc.id].completed++; }
-      });
+      for (const recDoc of refsSnap.docs) {
+        const d = recDoc.data();
+        const uid = d.assignedTo; if (!uid) continue;
+        const aAt  = d.assignedAt ? new Date(d.assignedAt) : null;
+        const uAt  = d.updatedAt  ? new Date(d.updatedAt)  : null;
+        const done = d.billingReady === true;
+        const inC  = done && (!fromDate || (uAt && uAt >= fromDate && uAt <= toDate));
+        const inA  = !fromDate || (aAt && aAt >= fromDate && aAt <= toDate) || inC;
+        if (!inA && !inC) continue;
+        const u = getUbs(uid, sheetDoc.id);
+        if (inA) u.dqAssigned++;
+        if (inC) u.dqCompleted++;
+      }
     }
 
-    // Build sorted arrays
-    const userRows = Object.entries(userMap)
-      .sort((a, b) => b[1].assigned - a[1].assigned)
-      .map(([uid, u], i) => ({
-        num: i + 1,
-        name: u.name,
-        assigned: u.assigned,
-        completed: u.completed,
-        taskTypes: Array.from(u.taskTypes).join(", "),
-        date: u.firstDate ? toISTDate(u.firstDate.getTime()) : "—",
-      }));
+    // ── Batch ─────────────────────────────────────────────────────────────────
+    const batchSheetsSnap = await db.collection("batch_sheets").get();
+    for (const sheetDoc of batchSheetsSnap.docs) {
+      const recsSnap = await sheetDoc.ref.collection("records").get();
+      for (const recDoc of recsSnap.docs) {
+        const d   = recDoc.data();
+        const uid = d.verification?.assignedTo; if (!uid) continue;
+        const aAt = d.verification?.assignedAt?.toDate ? d.verification.assignedAt.toDate() : null;
+        const cAt = d.verification?.completedAt?.toDate ? d.verification.completedAt.toDate() : null;
+        const done = d.verification?.status === "Completed";
+        const inC  = done && (!fromDate || (cAt && cAt >= fromDate && cAt <= toDate));
+        const inA  = !fromDate || (aAt && aAt >= fromDate && aAt <= toDate) || inC;
+        if (!inA && !inC) continue;
+        const u = getUbs(uid, sheetDoc.id);
+        if (inA) u.batchAssigned++;
+        if (inC) u.batchCompleted++;
+      }
+    }
 
-    const businessRows = Object.entries(businessMap)
-      .sort((a, b) => b[1].assigned - a[1].assigned)
-      .map(([, b], i) => ({
-        num: i + 1,
-        name: b.name,
-        assigned: b.assigned,
-        completed: b.completed,
-        pending: b.assigned - b.completed,
-      }));
+    // ── Derive totals from ubStats ────────────────────────────────────────────
+    const allUbs = Object.values(ubStats);
+    const sdsT = { searchE:0, searchML:0, supersedeE:0, supersedeML:0, transcriptionE:0, transcriptionML:0, billingE:0, billingML:0 };
+    allUbs.forEach(u => { Object.keys(sdsT).forEach(k => { sdsT[k] += (u[k]||0); }); });
+    const sdsTotE   = sdsT.searchE + sdsT.supersedeE + sdsT.transcriptionE + sdsT.billingE;
+    const sdsTotML  = sdsT.searchML + sdsT.supersedeML + sdsT.transcriptionML + sdsT.billingML;
+    const sdsTot    = sdsTotE + sdsTotML;
+    const dqTotA    = allUbs.reduce((a,u) => a + (u.dqAssigned||0),    0);
+    const dqTotC    = allUbs.reduce((a,u) => a + (u.dqCompleted||0),   0);
+    const btTotA    = allUbs.reduce((a,u) => a + (u.batchAssigned||0), 0);
+    const btTotC    = allUbs.reduce((a,u) => a + (u.batchCompleted||0),0);
+    const grandTotal = sdsTot + dqTotC + btTotC;
 
-    // ── Generate PDF ──────────────────────────────────────────────────────────
+    // ── User × Business rows — one row per (user, business) pair ─────────────
+    const userRows = allUbs.map(u => {
+      const srch  = u.searchE       + u.searchML;
+      const supr  = u.supersedeE    + u.supersedeML;
+      const tran  = u.transcriptionE + u.transcriptionML;
+      const bill  = u.billingE      + u.billingML;
+      const total = srch + supr + tran + bill + u.dqCompleted + u.batchCompleted;
+      if (!total) return null;
+      return {
+        name:  nameMap[u.uid] || u.uid,
+        biz:   u.sheetId.replace(/_/g, " "),
+        srch, supr, tran, bill,
+        dq:    u.dqCompleted,
+        batch: u.batchCompleted,
+        total,
+      };
+    }).filter(Boolean).sort((a,b) => b.total - a.total || a.name.localeCompare(b.name));
+
+    // ── Business-wise rows — derived from ubStats (no double-counting) ────────
+    const bizMap = {};
+    allUbs.forEach(u => {
+      const sid = u.sheetId;
+      if (!bizMap[sid]) bizMap[sid] = { types: new Set(), assigned:0, completed:0 };
+      const sdsC = u.searchE+u.searchML+u.supersedeE+u.supersedeML+u.transcriptionE+u.transcriptionML+u.billingE+u.billingML;
+      if (sdsC) { bizMap[sid].types.add("SDS"); bizMap[sid].completed += sdsC; }
+      if (u.dqAssigned)   { bizMap[sid].types.add("DQ");    bizMap[sid].assigned  += u.dqAssigned;    bizMap[sid].completed += u.dqCompleted; }
+      if (u.batchAssigned){ bizMap[sid].types.add("Batch"); bizMap[sid].assigned  += u.batchAssigned; bizMap[sid].completed += u.batchCompleted; }
+    });
+    const bizRows = Object.entries(bizMap)
+      .map(([sh,v]) => ({ name: sh.replace(/_/g," "), type: [...v.types].join("/"), assigned: v.assigned, completed: v.completed }))
+      .sort((a,b) => b.completed - a.completed);
+
+    // ── PDF ───────────────────────────────────────────────────────────────────
     const PDFDocument = require("pdfkit");
-    const doc = new PDFDocument({ margin: 50, size: "A4" });
-
-    res.setHeader("Content-Type", "application/pdf");
-    res.setHeader("Content-Disposition",
-      `attachment; filename=SARN_Executive_${period}_${now.toISOString().split("T")[0]}.pdf`);
+    const doc = new PDFDocument({ margin:40, size:"A4" });
+    res.setHeader("Content-Type","application/pdf");
+    res.setHeader("Content-Disposition",`attachment; filename=SARN_Executive_${period}_${now.toISOString().split("T")[0]}.pdf`);
     doc.pipe(res);
 
-    // Header
-    doc.rect(0, 0, 612, 78).fill("#0f172a");
-    doc.fill("#ffffff").fontSize(19).font("Helvetica-Bold").text("SARN TECHNOLOGIES", 50, 14);
-    doc.fontSize(11).font("Helvetica").text("Executive Summary Report", 50, 40);
-    doc.fontSize(9).fill("#93c5fd").text(periodLabel, 50, 57);
+    // A4 = 595pt wide. L=40, R=555, usable W=515
+    const L = 40, W = 515;
+    let Y = 0;
+
+    function guard(h=20) { if (Y + h > 768) { doc.addPage(); Y = 50; } }
+
+    // ── Header ──────────────────────────────────────────────────────────────
+    doc.rect(0, 0, 595, 70).fill("#0f172a");
+    doc.fill("#ffffff").fontSize(17).font("Helvetica-Bold").text("SARN TECHNOLOGIES", L, 12, {width:W, lineBreak:false});
+    doc.fontSize(10).font("Helvetica").text("Executive Summary Report  ·  " + periodLabel, L, 34, {width:W, lineBreak:false});
+    doc.fontSize(8).fill("#93c5fd").text(`Generated: ${toISTDate(Date.now())}  ·  Confidential`, L, 52, {width:W, lineBreak:false});
     doc.fill("#000000");
+    Y = 82;
 
-    let curY = 92;
-    doc.fontSize(8.5).fill("#6b7280").font("Helvetica")
-       .text(`Generated: ${toISTDate(Date.now())}   |   Confidential`, 50, curY);
-    curY += 24;
+    // ── Summary boxes ────────────────────────────────────────────────────────
+    guard(62);
+    const bw = (W - 9) / 4;
+    [
+      { lbl:"SDS Completed",   val:sdsTot,    col:"#1d4ed8", bg:"#dbeafe" },
+      { lbl:"DQ Completed",    val:dqTotC,    col:"#7c3aed", bg:"#ede9fe" },
+      { lbl:"Batch Completed", val:btTotC,    col:"#0891b2", bg:"#cffafe" },
+      { lbl:"Grand Total",     val:grandTotal, col:"#15803d", bg:"#dcfce7" },
+    ].forEach((b,i) => {
+      const bx = L + i*(bw+3);
+      doc.roundedRect(bx, Y, bw, 56, 5).fill(b.bg);
+      doc.fill(b.col).fontSize(22).font("Helvetica-Bold").text(String(b.val), bx+4, Y+6, {width:bw-8, align:"center", lineBreak:false});
+      doc.fill("#374151").fontSize(8.5).font("Helvetica").text(b.lbl, bx+4, Y+36, {width:bw-8, align:"center", lineBreak:false});
+    });
+    Y += 64;
 
-    function renderSASection(title, colDefs, rows, emptyMsg) {
-      const HDR_H = 22, ROW_H = 20;
-      if (curY + 60 > 760) { doc.addPage(); curY = 50; }
-      doc.fontSize(12).font("Helvetica-Bold").fill("#0f172a").text(title, 50, curY);
-      curY += 16;
-      doc.moveTo(50, curY).lineTo(562, curY).lineWidth(1).strokeColor("#0f172a").stroke();
-      curY += 8;
-
-      if (!rows.length) {
-        doc.fontSize(9).font("Helvetica").fill("#6b7280").text(emptyMsg || "No records found.", 55, curY);
-        curY += 28;
-        return;
-      }
-
-      if (curY + HDR_H > 760) { doc.addPage(); curY = 50; }
-      doc.rect(50, curY, 512, HDR_H).fill("#0f172a");
-      let hx = 50;
-      colDefs.forEach(c => {
-        doc.fill("#ffffff").fontSize(8.5).font("Helvetica-Bold")
-           .text(c.header, hx + 4, curY + 6, { width: c.w - 6, align: c.align || "left", lineBreak: false });
-        hx += c.w;
-      });
-      curY += HDR_H;
-
-      rows.forEach((row, i) => {
-        if (curY + ROW_H > 760) { doc.addPage(); curY = 50; }
-        doc.rect(50, curY, 512, ROW_H).fill(i % 2 === 0 ? "#f8fafc" : "#ffffff");
-        let rx = 50;
-        colDefs.forEach(c => {
-          doc.fill("#111827").fontSize(8.5).font("Helvetica")
-             .text(String(row[c.key] ?? "—"), rx + 4, curY + 5, { width: c.w - 6, align: c.align || "left", lineBreak: false });
-          rx += c.w;
-        });
-        curY += ROW_H;
-      });
-      curY += 18;
+    function secTitle(title) {
+      guard(24);
+      doc.rect(L, Y, W, 20).fill("#0f172a");
+      doc.fill("#ffffff").fontSize(9.5).font("Helvetica-Bold").text(title, L+6, Y+5, {width:W-10, lineBreak:false});
+      Y += 20;
     }
 
-    // Section 1 — Team Performance (cols sum = 512)
-    renderSASection(
-      "Team Performance",
-      [
-        { header: "#",           key: "num",       w: 25,  align: "center" },
-        { header: "Employee",    key: "name",      w: 130 },
-        { header: "Assigned",    key: "assigned",  w: 60,  align: "center" },
-        { header: "Completed",   key: "completed", w: 65,  align: "center" },
-        { header: "Task Types",  key: "taskTypes", w: 185 },
-        { header: "Date",        key: "date",      w: 47  },
-      ],
-      userRows,
-      "No employee activity found for this period."
-    );
+    // ── SDS Stage Breakdown ─────────────────────────────────────────────────
+    // Stage(140) + English(125) + Multilingual(125) + Total(125) = 515
+    Y += 6;
+    secTitle("SDS WORKFLOW — STAGE BREAKDOWN");
+    const SC = [{v:"Stage",w:140,a:"left"},{v:"English",w:125,a:"center"},{v:"Multilingual",w:125,a:"center"},{v:"Total",w:125,a:"center"}];
+    guard(22); doc.rect(L,Y,W,22).fill("#1e293b"); let hx=L;
+    SC.forEach(c => { doc.fill("#e2e8f0").fontSize(8.5).font("Helvetica-Bold").text(c.v,hx+4,Y+6,{width:c.w-6,align:c.a,lineBreak:false}); hx+=c.w; }); Y+=22;
+    [["Search",       sdsT.searchE,        sdsT.searchML],
+     ["Supersede",    sdsT.supersedeE,     sdsT.supersedeML],
+     ["Transcription",sdsT.transcriptionE, sdsT.transcriptionML],
+     ["Billing",      sdsT.billingE,       sdsT.billingML]]
+      .forEach(([lbl,e,ml],i) => {
+        guard(18); doc.rect(L,Y,W,18).fill(i%2===0?"#f8fafc":"#ffffff");
+        let rx=L;
+        [[lbl,140,"left"],[e,125,"center"],[ml,125,"center"],[e+ml,125,"center"]].forEach(([v,cw,a]) => {
+          doc.fill("#111827").fontSize(8.5).font("Helvetica").text(String(v),rx+4,Y+4,{width:cw-6,align:a,lineBreak:false}); rx+=cw;
+        }); Y+=18;
+      });
+    guard(22); doc.rect(L,Y,W,22).fill("#dbeafe"); let tr=L;
+    [["TOTAL",140,"left"],[sdsTotE,125,"center"],[sdsTotML,125,"center"],[sdsTot,125,"center"]].forEach(([v,cw,a]) => {
+      doc.fill("#1d4ed8").fontSize(9).font("Helvetica-Bold").text(String(v),tr+4,Y+5,{width:cw-6,align:a,lineBreak:false}); tr+=cw;
+    }); Y+=26;
 
-    // Section 2 — Business Activity (cols sum = 512)
-    renderSASection(
-      "Business-wise Activity",
-      [
-        { header: "#",           key: "num",       w: 25,  align: "center" },
-        { header: "Business",    key: "name",      w: 210 },
-        { header: "Assigned",    key: "assigned",  w: 93,  align: "center" },
-        { header: "Completed",   key: "completed", w: 92,  align: "center" },
-        { header: "Pending",     key: "pending",   w: 92,  align: "center" },
-      ],
-      businessRows,
-      "No business activity found for this period."
-    );
+    // ── DQ + Batch inline cards ───────────────────────────────────────────────
+    guard(38);
+    const hw = (W-6)/2;
+    doc.roundedRect(L,Y,hw,34,4).fill("#f5f3ff");
+    doc.fill("#7c3aed").fontSize(9).font("Helvetica-Bold").text("DQ WORKFLOW",L+8,Y+5,{width:hw-12,lineBreak:false});
+    doc.fill("#374151").fontSize(8).font("Helvetica").text(`Assigned: ${dqTotA}   Completed: ${dqTotC}   Pending: ${Math.max(0,dqTotA-dqTotC)}`,L+8,Y+20,{width:hw-12,lineBreak:false});
+    const bx2=L+hw+6;
+    doc.roundedRect(bx2,Y,hw,34,4).fill("#f0fdfa");
+    doc.fill("#0891b2").fontSize(9).font("Helvetica-Bold").text("BATCH WORKFLOW",bx2+8,Y+5,{width:hw-12,lineBreak:false});
+    doc.fill("#374151").fontSize(8).font("Helvetica").text(`Assigned: ${btTotA}   Completed: ${btTotC}   Pending: ${Math.max(0,btTotA-btTotC)}`,bx2+8,Y+20,{width:hw-12,lineBreak:false});
+    Y += 42;
 
-    // Totals box
-    const totalAssigned  = userRows.reduce((s, r) => s + r.assigned,  0);
-    const totalCompleted = userRows.reduce((s, r) => s + r.completed, 0);
-    if (curY + 52 > 760) { doc.addPage(); curY = 50; }
-    doc.rect(50, curY, 512, 44).fill("#f0f9ff");
-    doc.fill("#0f172a").fontSize(11).font("Helvetica-Bold").text("Overall Totals", 60, curY + 6);
-    doc.fill("#374151").fontSize(9).font("Helvetica")
-       .text(
-         `Assigned: ${totalAssigned}   |   Completed: ${totalCompleted}   |   Pending: ${totalAssigned - totalCompleted}   |   Employees Active: ${userRows.length}   |   Businesses: ${businessRows.length}`,
-         60, curY + 24
-       );
-    curY += 60;
+    // ── User × Business Performance ───────────────────────────────────────────
+    // One row per user per business. Columns sum = 515:
+    // #(20) Name(95) Business(105) SDS Srch(44) SDS Supr(44) SDS Trans(44) SDS Bill(44) DQ(34) Batch(34) Total(51) = 515
+    Y += 4;
+    secTitle("USER-WISE PERFORMANCE BY BUSINESS  (Completed counts)");
+    const UC = [
+      {v:"#",        w:20,  a:"center"},
+      {v:"Name",     w:95,  a:"left"},
+      {v:"Business", w:105, a:"left"},
+      {v:"SDS Srch", w:44,  a:"center"},
+      {v:"SDS Supr", w:44,  a:"center"},
+      {v:"SDS Trans",w:44,  a:"center"},
+      {v:"SDS Bill", w:44,  a:"center"},
+      {v:"DQ",       w:34,  a:"center"},
+      {v:"Batch",    w:34,  a:"center"},
+      {v:"Total",    w:51,  a:"center"},
+    ];
+    guard(22); doc.rect(L,Y,W,22).fill("#1e293b"); let uhx=L;
+    UC.forEach(c => { doc.fill("#e2e8f0").fontSize(8).font("Helvetica-Bold").text(c.v,uhx+3,Y+6,{width:c.w-4,align:c.a,lineBreak:false}); uhx+=c.w; }); Y+=22;
+    if (!userRows.length) {
+      guard(18); doc.fill("#6b7280").fontSize(9).font("Helvetica").text("No completed activity in this period.",L+6,Y+4); Y+=18;
+    }
+    userRows.forEach((u,i) => {
+      guard(18); doc.rect(L,Y,W,18).fill(i%2===0?"#f8fafc":"#ffffff");
+      let urx=L;
+      const cells = [
+        {v:i+1,   w:20,  a:"center"},
+        {v:u.name,w:95,  a:"left"},
+        {v:u.biz, w:105, a:"left"},
+        {v:u.srch||0, w:44, a:"center"},
+        {v:u.supr||0, w:44, a:"center"},
+        {v:u.tran||0, w:44, a:"center"},
+        {v:u.bill||0, w:44, a:"center"},
+        {v:u.dq||0,   w:34, a:"center"},
+        {v:u.batch||0,w:34, a:"center"},
+        {v:u.total,   w:51, a:"center", bold:true},
+      ];
+      cells.forEach(c => {
+        doc.fill(c.bold?"#1d4ed8":"#111827").fontSize(8).font(c.bold?"Helvetica-Bold":"Helvetica")
+           .text(String(c.v??"—"),urx+3,Y+4,{width:c.w-4,align:c.a,lineBreak:false});
+        urx += c.w;
+      }); Y+=18;
+    });
+
+    // ── Business-wise Activity ───────────────────────────────────────────────
+    // #(22) Business(213) Type(80) Assigned(80) Completed(120) = 515
+    Y += 6;
+    secTitle("BUSINESS-WISE ACTIVITY");
+    const BC = [
+      {v:"#",         w:22,  a:"center"},
+      {v:"Business",  w:213, a:"left"},
+      {v:"Type",      w:80,  a:"center"},
+      {v:"Assigned",  w:80,  a:"center"},
+      {v:"Completed", w:120, a:"center"},
+    ];
+    guard(22); doc.rect(L,Y,W,22).fill("#1e293b"); let bhx=L;
+    BC.forEach(c => { doc.fill("#e2e8f0").fontSize(8.5).font("Helvetica-Bold").text(c.v,bhx+3,Y+6,{width:c.w-4,align:c.a,lineBreak:false}); bhx+=c.w; }); Y+=22;
+    if (!bizRows.length) {
+      guard(18); doc.fill("#6b7280").fontSize(9).font("Helvetica").text("No business activity in this period.",L+6,Y+4); Y+=18;
+    }
+    bizRows.forEach((b,i) => {
+      guard(18); doc.rect(L,Y,W,18).fill(i%2===0?"#f8fafc":"#ffffff"); let brx=L;
+      [{v:i+1,     w:22,  a:"center"},
+       {v:b.name,  w:213, a:"left"},
+       {v:b.type,  w:80,  a:"center"},
+       {v:b.assigned,  w:80,  a:"center"},
+       {v:b.completed, w:120, a:"center"},
+      ].forEach(c => { doc.fill("#111827").fontSize(8).font("Helvetica").text(String(c.v??"—"),brx+3,Y+4,{width:c.w-4,align:c.a,lineBreak:false}); brx+=c.w; }); Y+=18;
+    });
 
     // Footer
-    doc.fontSize(8).fill("#9ca3af").font("Helvetica")
-       .text(`SARN Technologies  •  Executive Report  •  Confidential  •  ${toISTDate(Date.now())}`, 50, 808, { align: "center", width: 512 });
+    doc.fontSize(7.5).fill("#9ca3af").font("Helvetica")
+       .text(`SARN Technologies  ·  Executive Summary  ·  Confidential  ·  ${toISTDate(Date.now())}`, L, 828, {align:"center", width:W});
 
     doc.end();
   } catch (err) {
@@ -5460,9 +5573,23 @@ app.post("/admin/chat", chatUpload.single("pdf"), async (req, res) => {
 
     // ---- PDF field extraction ----
     if (req.file) {
-      const pdfParse = require("pdf-parse");
-      const pdfData = await pdfParse(req.file.buffer);
-      const rawText = pdfData.text.replace(/\r\n/g, "\n").replace(/[ \t]{2,}/g, " ").trim();
+      const pdfjsLib = require("pdfjs-dist/legacy/build/pdf");
+      const _path = require("path");
+      const cMapUrl = _path.join(_path.dirname(require.resolve("pdfjs-dist/package.json")), "cmaps") + _path.sep;
+      let rawText = "";
+      try {
+        const uint8Array = new Uint8Array(req.file.buffer);
+        const loadingTask = pdfjsLib.getDocument({ data: uint8Array, cMapUrl, cMapPacked: true, useSystemFonts: true });
+        const pdfDoc = await loadingTask.promise;
+        for (let pg = 1; pg <= pdfDoc.numPages; pg++) {
+          const page = await pdfDoc.getPage(pg);
+          const content = await page.getTextContent();
+          rawText += content.items.map(item => item.str).join(" ") + "\n";
+        }
+        rawText = rawText.replace(/\r\n/g, "\n").replace(/[ \t]{2,}/g, " ").trim();
+      } catch (e) {
+        return res.json({ ok: false, error: "Could not extract text from PDF." });
+      }
       if (!rawText) return res.json({ ok: false, error: "Could not extract text from PDF." });
 
       // Only first 2000 chars — all header fields appear near the top of SDS sheets
@@ -5560,6 +5687,279 @@ ${JSON.stringify(context, null, 2)}`;
   } catch (err) {
     console.error("CHAT ERROR:", err.message);
     res.json({ ok: false, error: err.message || "Something went wrong. Please try again." });
+  }
+});
+
+// =====================================================================
+// MONITORING REPORTS — SDS
+// =====================================================================
+app.get("/admin/sds/reports-data", async (req, res) => {
+  try {
+    const period = req.query.period || "week";
+    const now = new Date();
+    let fromDate = null;
+
+    if (period === "today") {
+      fromDate = new Date(now); fromDate.setHours(0, 0, 0, 0);
+    } else if (period === "week") {
+      fromDate = new Date(now); fromDate.setDate(fromDate.getDate() - 6); fromDate.setHours(0, 0, 0, 0);
+    } else if (period === "month") {
+      fromDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+    const toDate = new Date(now); toDate.setHours(23, 59, 59, 999);
+
+    const usersSnap = await db.collection("users").get();
+    const userMap = {};
+    usersSnap.docs.forEach(d => { userMap[d.id] = d.data().name || d.data().email || d.id; });
+
+    const sheetsSnap = await db.collection("sds_sheets").get();
+    const STAGES = ["search", "supersede", "transcription", "billing"];
+    const userStats = {};
+
+    for (const sheetDoc of sheetsSnap.docs) {
+      const sheetId = sheetDoc.id;
+      const recsSnap = await db.collection("sds_sheets").doc(sheetId).collection("references").get();
+
+      for (const recDoc of recsSnap.docs) {
+        const d = recDoc.data();
+        const lang = String(d.common?.language || d.search?.language || "english").toLowerCase().trim();
+        const isEnglish = !lang || lang === "english";
+        const langSuffix = isEnglish ? "E" : "ML";
+
+        for (const stage of STAGES) {
+          const sd = d[stage];
+          if (!sd || !sd.assignedTo) continue;
+
+          const uid = sd.assignedTo;
+          const assignedAt = sd.assignedAt?.toDate ? sd.assignedAt.toDate() : null;
+          const completedAt = sd.completedAt?.toDate ? sd.completedAt.toDate() : null;
+
+          const inPeriodAssigned = !fromDate || (assignedAt && assignedAt >= fromDate && assignedAt <= toDate);
+          const inPeriodCompleted = completedAt && (!fromDate || (completedAt >= fromDate && completedAt <= toDate));
+
+          if (!inPeriodAssigned && !inPeriodCompleted) continue;
+
+          if (!userStats[uid]) {
+            userStats[uid] = {
+              userId: uid, name: userMap[uid] || uid,
+              totalAssigned: 0,
+              searchE: 0, searchML: 0,
+              supersedeE: 0, supersedeML: 0,
+              transcriptionE: 0, transcriptionML: 0,
+              billingE: 0, billingML: 0,
+              total: 0, sheetSet: new Set(), records: [],
+            };
+          }
+
+          if (inPeriodAssigned) {
+            userStats[uid].totalAssigned++;
+            userStats[uid].sheetSet.add(sheetId);
+          }
+
+          if (inPeriodCompleted) {
+            userStats[uid][`${stage}${langSuffix}`]++;
+            userStats[uid].total++;
+            userStats[uid].records.push({
+              sheet: sheetId,
+              refId: d.repoId || recDoc.id,
+              chemical: d.common?.chemicalProduct || "",
+              language: d.common?.language || d.search?.language || d.supersede?.language || d.transcription?.language || "",
+              stage,
+              completedAt: completedAt.toISOString(),
+            });
+          }
+        }
+      }
+    }
+
+    const users = Object.values(userStats).map(u => ({
+      ...u, sheets: [...u.sheetSet].sort(), sheetSet: undefined,
+    })).sort((a, b) => b.totalAssigned - a.totalAssigned);
+
+    const totals = users.reduce((acc, u) => {
+      acc.totalAssigned += u.totalAssigned;
+      ["searchE","searchML","supersedeE","supersedeML","transcriptionE","transcriptionML","billingE","billingML","total"]
+        .forEach(k => { acc[k] = (acc[k] || 0) + (u[k] || 0); });
+      return acc;
+    }, { totalAssigned: 0, searchE:0, searchML:0, supersedeE:0, supersedeML:0, transcriptionE:0, transcriptionML:0, billingE:0, billingML:0, total:0 });
+
+    res.json({ ok: true, period, totals, users });
+  } catch (err) {
+    console.error("SDS REPORTS ERROR:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// =====================================================================
+// MONITORING REPORTS — DQ
+// =====================================================================
+app.get("/admin/dq/reports-data", async (req, res) => {
+  try {
+    const period = req.query.period || "week";
+    const now = new Date();
+    let fromDate = null;
+
+    if (period === "today") {
+      fromDate = new Date(now); fromDate.setHours(0, 0, 0, 0);
+    } else if (period === "week") {
+      fromDate = new Date(now); fromDate.setDate(fromDate.getDate() - 6); fromDate.setHours(0, 0, 0, 0);
+    } else if (period === "month") {
+      fromDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+    const toDate = new Date(now); toDate.setHours(23, 59, 59, 999);
+
+    const usersSnap = await db.collection("users").get();
+    const userMap = {};
+    usersSnap.docs.forEach(d => { userMap[d.id] = d.data().name || d.data().email || d.id; });
+
+    const sheetsSnap = await db.collection("dq_sheets").get();
+    const userStats = {};
+
+    for (const sheetDoc of sheetsSnap.docs) {
+      const sheetId = sheetDoc.id;
+      const recsSnap = await db.collection("dq_sheets").doc(sheetId).collection("references").get();
+
+      for (const recDoc of recsSnap.docs) {
+        const d = recDoc.data();
+        const uid = d.assignedTo;
+        if (!uid) continue;
+
+        const assignedAt = d.assignedAt ? new Date(d.assignedAt) : null;
+        const updatedAt = d.updatedAt ? new Date(d.updatedAt) : null;
+        const isCompleted = d.billingReady === true;
+
+        const inPeriodAssigned = !fromDate || (assignedAt && assignedAt >= fromDate && assignedAt <= toDate);
+        const inPeriodCompleted = isCompleted && (!fromDate || (updatedAt && updatedAt >= fromDate && updatedAt <= toDate));
+
+        if (!inPeriodAssigned && !inPeriodCompleted) continue;
+
+        if (!userStats[uid]) {
+          userStats[uid] = {
+            userId: uid, name: userMap[uid] || uid,
+            totalAssigned: 0, totalCompleted: 0,
+            sheetSet: new Set(), records: [],
+          };
+        }
+
+        if (inPeriodAssigned) {
+          userStats[uid].totalAssigned++;
+          userStats[uid].sheetSet.add(sheetId);
+        }
+
+        if (inPeriodCompleted) {
+          userStats[uid].totalCompleted++;
+          userStats[uid].records.push({
+            sheet: sheetId,
+            refId: recDoc.id,
+            chemical: d.common?.chemicalProduct || d.chemicalProduct || "",
+            completedAt: updatedAt?.toISOString() || "",
+          });
+        }
+      }
+    }
+
+    const users = Object.values(userStats).map(u => ({
+      ...u, sheets: [...u.sheetSet].sort(), sheetSet: undefined,
+    })).sort((a, b) => b.totalAssigned - a.totalAssigned);
+
+    const totals = users.reduce((acc, u) => {
+      acc.totalAssigned += u.totalAssigned;
+      acc.totalCompleted += u.totalCompleted;
+      return acc;
+    }, { totalAssigned: 0, totalCompleted: 0 });
+
+    res.json({ ok: true, period, totals, users });
+  } catch (err) {
+    console.error("DQ REPORTS ERROR:", err);
+    res.status(500).json({ ok: false, error: err.message });
+  }
+});
+
+// =====================================================================
+// MONITORING REPORTS — BATCH
+// =====================================================================
+app.get("/admin/batch/reports-data", async (req, res) => {
+  try {
+    const period = req.query.period || "week";
+    const now = new Date();
+    let fromDate = null;
+
+    if (period === "today") {
+      fromDate = new Date(now); fromDate.setHours(0, 0, 0, 0);
+    } else if (period === "week") {
+      fromDate = new Date(now); fromDate.setDate(fromDate.getDate() - 6); fromDate.setHours(0, 0, 0, 0);
+    } else if (period === "month") {
+      fromDate = new Date(now.getFullYear(), now.getMonth(), 1);
+    }
+    const toDate = new Date(now); toDate.setHours(23, 59, 59, 999);
+
+    const usersSnap = await db.collection("users").get();
+    const userMap = {};
+    usersSnap.docs.forEach(d => { userMap[d.id] = d.data().name || d.data().email || d.id; });
+
+    const sheetsSnap = await db.collection("batch_sheets").get();
+    const userStats = {};
+
+    for (const sheetDoc of sheetsSnap.docs) {
+      const sheetId = sheetDoc.id;
+      const recsSnap = await db.collection("batch_sheets").doc(sheetId).collection("records").get();
+
+      for (const recDoc of recsSnap.docs) {
+        const d = recDoc.data();
+        const uid = d.verification?.assignedTo;
+        if (!uid) continue;
+
+        const assignedAt = d.verification?.assignedAt?.toDate ? d.verification.assignedAt.toDate() : null;
+        const completedAt = d.verification?.completedAt?.toDate ? d.verification.completedAt.toDate() : null;
+        const isCompleted = d.verification?.status === "Completed";
+
+        const inPeriodCompleted = isCompleted && (!fromDate || (completedAt && completedAt >= fromDate && completedAt <= toDate));
+        // A record "belongs" to the period if assigned in it OR completed in it
+        const inPeriodAssigned = !fromDate || (assignedAt && assignedAt >= fromDate && assignedAt <= toDate) || inPeriodCompleted;
+
+        if (!inPeriodAssigned && !inPeriodCompleted) continue;
+
+        if (!userStats[uid]) {
+          userStats[uid] = {
+            userId: uid, name: userMap[uid] || uid,
+            totalAssigned: 0, totalCompleted: 0,
+            sheetSet: new Set(), records: [],
+          };
+        }
+
+        if (inPeriodAssigned) {
+          userStats[uid].totalAssigned++;
+          userStats[uid].sheetSet.add(sheetId);
+        }
+
+        if (inPeriodCompleted) {
+          userStats[uid].totalCompleted++;
+          userStats[uid].records.push({
+            sheet: sheetId,
+            recordId: d.recordId || recDoc.id,
+            repositoryNo: d.common?.newRepository || "",
+            chemical: d.common?.chemicalName || "",
+            language: d.common?.language || "",
+            completedAt: completedAt?.toISOString() || "",
+          });
+        }
+      }
+    }
+
+    const users = Object.values(userStats).map(u => ({
+      ...u, sheets: [...u.sheetSet].sort(), sheetSet: undefined,
+    })).sort((a, b) => b.totalAssigned - a.totalAssigned);
+
+    const totals = users.reduce((acc, u) => {
+      acc.totalAssigned += u.totalAssigned;
+      acc.totalCompleted += u.totalCompleted;
+      return acc;
+    }, { totalAssigned: 0, totalCompleted: 0 });
+
+    res.json({ ok: true, period, totals, users });
+  } catch (err) {
+    console.error("BATCH REPORTS ERROR:", err);
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 

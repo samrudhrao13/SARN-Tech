@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import AdminLayout from "../../layouts/AdminLayout";
 import api from "../../config/apiClient"; 
 
 const PAGE_SIZE = 100;
@@ -84,7 +83,7 @@ export default function DQWorkflow() {
   }
 
   return (
-    <AdminLayout>
+    <>
       <h1>DQ — Workflow Tracking</h1>
 
       {/* CONTROLS */}
@@ -199,7 +198,7 @@ export default function DQWorkflow() {
       )}
 
       {!msg && rows.length === 0 && <p>No records found.</p>}
-    </AdminLayout>
+    </>
   );
 }
 

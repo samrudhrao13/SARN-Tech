@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import AdminLayout from "../../layouts/AdminLayout";
 import { useNavigate } from "react-router-dom";
 import api from "../../config/apiClient";
 
@@ -85,7 +84,7 @@ export default function Workflow() {
   };
 
   return (
-    <AdminLayout>
+    <>
       <h1>SDS Workflow Control</h1>
 
       {/* SHEET SELECT */}
@@ -191,7 +190,7 @@ export default function Workflow() {
           </button>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }
 

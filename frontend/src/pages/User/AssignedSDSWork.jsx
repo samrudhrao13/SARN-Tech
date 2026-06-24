@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import UserLayout from "../../layouts/UserLayout";
 import { useNavigate } from "react-router-dom";
 import api from "../../config/apiClient";
 
@@ -42,7 +41,15 @@ export default function AssignedSDSWork() {
           },
         });
 
-        setTasks(res.data.ok ? res.data.tasks || [] : []);
+        const raw = res.data.ok ? res.data.tasks || [] : [];
+        // Newest assigned first; fall back to referenceId descending
+        raw.sort((a, b) => {
+          const ta = a.assignedAt?._seconds ?? 0;
+          const tb = b.assignedAt?._seconds ?? 0;
+          if (tb !== ta) return tb - ta;
+          return String(b.referenceId).localeCompare(String(a.referenceId), undefined, { numeric: true });
+        });
+        setTasks(raw);
       } catch (err) {
         console.error("LOAD SDS TASKS ERROR:", err);
         setTasks([]);
@@ -78,7 +85,7 @@ export default function AssignedSDSWork() {
   }
 
   return (
-    <UserLayout>
+    <>
       <h1>Assigned SDS Work</h1>
       <div
   style={{
@@ -194,7 +201,7 @@ export default function AssignedSDSWork() {
           </tbody>
         </table>
       )}
-    </UserLayout>
+    </>
   );
 }
 

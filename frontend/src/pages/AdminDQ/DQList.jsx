@@ -1,5 +1,4 @@
 import React, { useEffect, useState } from "react";
-import AdminLayout from "../../layouts/AdminLayout";
 import api from "../../config/apiClient";
 
 const PAGE_SIZE = 100;
@@ -68,7 +67,7 @@ export default function DQList() {
   const unassignedCount = rows.filter(r => !r.locked).length;
 
   return (
-    <AdminLayout>
+    <>
       <h1 style={{ marginBottom: 14 }}>📄 DQ List</h1>
 
       {/* CONTROLS */}
@@ -166,7 +165,7 @@ export default function DQList() {
           </button>
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }
 

@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { useParams, useSearchParams, useNavigate } from "react-router-dom";
-import AdminLayout from "../../layouts/AdminLayout";
 import api from "../../config/apiClient"; 
 
 export default function DQView() {
@@ -42,7 +41,7 @@ export default function DQView() {
   }, [sheet, repoId]);
 
   return (
-    <AdminLayout>
+    <>
       <h1>DQ Completed Work — Repo {repoId}</h1>
 
       <button onClick={() => navigate(-1)} style={{ marginBottom: 15 }}>
@@ -69,7 +68,7 @@ export default function DQView() {
           />
         </>
       )}
-    </AdminLayout>
+    </>
   );
 }
 

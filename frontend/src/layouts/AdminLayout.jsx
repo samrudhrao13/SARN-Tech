@@ -19,13 +19,13 @@ export default function AdminLayout({ children }) {
       {/* Main Content */}
       <div
         style={{
-          marginLeft: "140px",
-          padding: "30px",
-          width: "calc(100% - 140px)",
+          marginLeft: "220px",
+          padding: "28px 30px 30px 16px",
+          width: "calc(100% - 220px)",
           minHeight: "100vh",
           background: "#f8fafc",
           boxSizing: "border-box",
-          overflowY: "auto", // ✅ scroll only content
+          overflowY: "auto",
         }}
       >
         {children}

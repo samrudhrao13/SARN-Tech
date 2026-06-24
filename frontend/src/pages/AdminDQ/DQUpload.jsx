@@ -1,5 +1,4 @@
 import React, { useState } from "react";
-import AdminLayout from "../../layouts/AdminLayout";
 import api from "../../config/apiClient"; 
 
 export default function DQUpload() {
@@ -53,7 +52,7 @@ export default function DQUpload() {
   }
 
   return (
-    <AdminLayout>
+    <>
       <h1 style={{ fontSize: 28, fontWeight: 700 }}>
         Upload DQ Excel
       </h1>
@@ -90,7 +89,7 @@ export default function DQUpload() {
           {status}
         </div>
       )}
-    </AdminLayout>
+    </>
   );
 }
 

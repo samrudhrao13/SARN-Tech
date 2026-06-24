@@ -1,13 +1,12 @@
 import React, { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import AdminLayout from "../../layouts/AdminLayout";
 
 
 export default function Dashboard() {
   const navigate = useNavigate();
 
   return (
-    <AdminLayout>
+    <>
       <h1 style={{ marginBottom: 8 }}>SDS Dashboard</h1>
       <p style={{ marginBottom: 24, color: "#475569" }}>
         Quick access to SDS workflows and administrative actions.
@@ -63,7 +62,7 @@ export default function Dashboard() {
           onClick={() => navigate("/admin/sds/billing")}
         />
       </div>
-    </AdminLayout>
+    </>
   );
 }
 

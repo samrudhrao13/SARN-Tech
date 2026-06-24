@@ -1,6 +1,28 @@
 import React, { useState } from "react";
-import "./Form.css";
 import api from "../../../config/apiClient";
+
+const LANGUAGES = [
+  "English",
+  "French",
+  "Spanish",
+  "German",
+  "Korean",
+  "Chinese Simplified",
+  "Chinese",
+  "Portuguese",
+  "Portuguese Portugal",
+  "Italian",
+  "Danish",
+  "Czech",
+  "Lithuanian",
+  "Hungarian",
+  "Norwegian",
+  "Slovenian",
+  "Thai",
+  "Espanol",
+  "Deutsch",
+  "Others",
+];
 
 const SEARCH_COMMENTS = [
   "SDS through websearch",
@@ -37,110 +59,80 @@ const SEARCH_COMMENTS_2 = [
   "Archived",
 ];
 
-export default function SearchForm({
-  sheet,
-  refId,
-  userId,
-  searchData,
-  onDone
-}) {
-  const [loading, setLoading] = useState(false);
-  const [notPublishable, setNotPublishable] = useState(false);
-
-  // ✅ NEW STATES
-  const [status, setStatus] = useState(
-  searchData?.status || ""
-);
+export default function SearchForm({ sheet, refId, userId, searchData, onDone }) {
+  const [loading, setLoading]             = useState(false);
+  const [notPublishable, setNotPublishable] = useState(searchData?.notPublishable || false);
+  const [status, setStatus]               = useState(searchData?.status || "");
   const [statusUpdated, setStatusUpdated] = useState(false);
+  const [language, setLanguage]           = useState(searchData?.language || "English");
+  const [languageOther, setLanguageOther] = useState(
+    searchData?.language?.startsWith("Others: ")
+      ? searchData.language.replace("Others: ", "")
+      : ""
+  );
+
+  const isMultilingual = language !== "English";
+  const displayLanguage = language === "Others" && languageOther ? `Others: ${languageOther}` : language;
+
+  /* ── collect form fields ── */
+  function gatherFields() {
+    const form = document.getElementById("sds-search-form");
+    const fd   = new FormData(form);
+    return {
+      searchType:          fd.get("searchType")          || "",
+      comments1:           fd.get("comments1")           || "",
+      comments2:           fd.get("comments2")           || "",
+      websearch1:          fd.get("websearch1")          || "",
+      websearch2:          fd.get("websearch2")          || "",
+      websearch3:          fd.get("websearch3")          || "",
+      mailId:              fd.get("mailId")              || "",
+      remarks:             fd.get("remarks")             || "",
+      supersedeObservation:fd.get("supersedeObservation")|| "",
+      startDate:           fd.get("startDate")           || "",
+      endDate:             fd.get("endDate")             || "",
+      notPublishableReason:fd.get("notPublishableReason")|| "",
+    };
+  }
+
+  /* ── Update Status ── */
   const handleStatusUpdate = async (e) => {
-  e?.preventDefault();   
-
-  console.log("🔥 BUTTON CLICKED"); 
-
-  if (!status) {
-    alert("Please select status");
-    return;
-  }
-
-  try {
-    const form = document.querySelector(".form-card");
-
-const fd = new FormData(form);
-
-const payload = {
-  sheet,
-  refId,
-  userId,
-  status,
-
-  searchType: fd.get("searchType"),
-  comments1: fd.get("comments1"),
-  comments2: fd.get("comments2"),
-
-  websearch1: fd.get("websearch1"),
-  websearch2: fd.get("websearch2"),
-  websearch3: fd.get("websearch3"),
-
-  mailId: fd.get("mailId"),
-
-  remarks: fd.get("remarks"),
-
-  supersedeObservation:
-    fd.get("supersedeObservation"),
-
-  startDate: fd.get("startDate"),
-  endDate: fd.get("endDate"),
-
-  notPublishable,
-};
-
-console.log(payload);
-
-const res = await api.post(
-  "/sds/workflow/update-status",
-  payload
-);
-    console.log("API RESPONSE:", res.data); // ✅ DEBUG
-
-    if (!res.data.ok) {
-      alert("Failed to update status");
-      return;
+    e?.preventDefault();
+    if (!status) { alert("Please select a status"); return; }
+    try {
+      const fields = gatherFields();
+      const res = await api.post("/sds/workflow/update-status", {
+        sheet, refId, userId, status,
+        language, languageOther,
+        notPublishable: String(notPublishable),
+        ...fields,
+      });
+      if (!res.data.ok) { alert("Failed to update status"); return; }
+      setStatusUpdated(true);
+      alert("✅ Status updated successfully");
+    } catch (err) {
+      console.error(err);
+      alert("❌ Error updating status");
     }
+  };
 
-    setStatusUpdated(true);
-    alert("✅ Status updated successfully");
-  } catch (err) {
-    console.error("STATUS UPDATE ERROR:", err);
-    alert("❌ Error updating status");
-  }
-};
+  /* ── Submit Search ── */
   async function handleSubmit(e) {
     e.preventDefault();
-
-    if (!userId) {
-      alert("Session expired. Please login again.");
-      return;
-    }
-
-    const fd = new FormData(e.target);
-    fd.append("sheet", sheet);
-    fd.append("refId", refId);
-    fd.append("userId", userId);
-    fd.set("notPublishable", String(notPublishable));
-
+    if (!userId) { alert("Session expired. Please login again."); return; }
+    const fields = gatherFields();
+    const fd = new FormData();
+    Object.entries({ sheet, refId, userId, language, languageOther,
+                     notPublishable: String(notPublishable), ...fields }).forEach(([k,v]) => fd.append(k, v));
+    const pdfInput = document.querySelector('input[name="pdf"]');
+    if (pdfInput?.files?.[0]) fd.append("pdf", pdfInput.files[0]);
     try {
       setLoading(true);
       const res = await api.post("/sds/workflow/search", fd);
-
-      if (!res.data.ok) {
-        alert(res.data.error || "Submit failed");
-        return;
-      }
-
+      if (!res.data.ok) { alert(res.data.error || "Submit failed"); return; }
       alert("✅ Search submitted successfully");
       onDone && onDone();
     } catch (err) {
-      console.error("SEARCH SUBMIT ERROR:", err);
+      console.error(err);
       alert("❌ Submit failed");
     } finally {
       setLoading(false);
@@ -148,197 +140,256 @@ const res = await api.post(
   }
 
   return (
-    <form className="form-card" onSubmit={handleSubmit}>
-      <h3 className="form-title">Search Stage</h3>
-
-      <div className="form-grid">
-
-        {/* ===== DROPDOWNS ===== */}
-        <div className="field">
-          <label>Search Comments</label>
-          <select
-            name="searchType"
-            defaultValue={searchData?.searchType || ""}
-          >
-            <option value="" disabled>Select</option>
-            {SEARCH_COMMENTS.map(v => <option key={v}>{v}</option>)}
-          </select>
-        </div>
-
-        <div className="field">
-          <label>Search Comments 1</label>
-          <select
-            name="comments1"
-            defaultValue={searchData?.comments1 || ""}
-          >
-            <option value="" disabled>Select</option>
-            {SEARCH_COMMENTS_1.map(v => <option key={v}>{v}</option>)}
-          </select>
-        </div>
-
-        <div className="field">
-          <label>Search Comments 2</label>
-          <select
-            name="comments2"
-            defaultValue={searchData?.comments2 || ""}
-          >
-            <option value="" disabled>Select</option>
-            {SEARCH_COMMENTS_2.map(v => <option key={v}>{v}</option>)}
-          </select>
-        </div>
-
-        {/* ===== WEBSEARCH LINKS ===== */}
-        <div className="field">
-        <label>Websearch Link 1</label>
-        <input
-          name="websearch1"
-          placeholder="Enter URL"
-          defaultValue={searchData?.websearch1 || ""}
-          />
-        </div>
-
-        <div className="field">
-          <label>Websearch Link 2</label>
-          <input
-            name="websearch2"
-            placeholder="Enter URL"
-            defaultValue={searchData?.websearch2 || ""}
-          />
-        </div>
-
-        <div className="field">
-          <label>Websearch Link 3</label>
-          <input
-            name="websearch3"
-            placeholder="Enter URL"
-            defaultValue={searchData?.websearch3 || ""}
-          />
-        </div>
-
-        {/* ===== MAIL ===== */}
-        <div className="field full">
-          <label>Mail ID / Source</label>
-          <input
-            name="mailId"
-            placeholder="Enter email or source"
-            defaultValue={searchData?.mailId || ""}
-          />
-        </div>
-
-        {/* ===== TEXT AREAS ===== */}
-        <div className="field full">
-          <label>Remarks</label>
-          <textarea
-            name="remarks"
-            defaultValue={searchData?.remarks || ""}
-          />
-        </div>
-
-        <div className="field full">
-          <label>Supersede Observation</label>
-          <textarea
-            name="supersedeObservation"
-            defaultValue={searchData?.supersedeObservation || ""}
-          />
-        </div>
-
-        {/* ===== DATES ===== */}
-        <div className="field">
-          <label>Start Date</label>
-          <input
-            type="date"
-            name="startDate"
-            defaultValue={searchData?.startDate || ""}
-          />
-        </div>
-
-        <div className="field">
-          <label>End Date</label>
-          <input
-            type="date"
-            name="endDate"
-            defaultValue={searchData?.endDate || ""}
-          />
-        </div>
-
-        {/* ===== STATUS BLOCK (NEW) ===== */}
-        <div className="field">
-          <label>Status</label>
-          <select
-            value={status}
-            onChange={(e) => {
-              setStatus(e.target.value);
-              setStatusUpdated(false);
-            }}
-          >
-            <option value="" disabled>Select Status</option>
-            <option value="File available">File available</option>
-            <option value="No file Found">No file Found</option>
-            <option value="Waiting Response">Waiting Response</option>
-          </select>
-        </div>
-
-        <div className="field full">
-  <button
-    type="button"
-    className="update-btn"
-    disabled={!status}
-    onClick={(e) => {
-      console.log("🔥 CLICK WORKING");
-      handleStatusUpdate(e);
-    }}
-  >
-    Update Status
-  </button>
-</div>
-
-        {/* ===== NOT PUBLISHABLE ===== */}
-        <div className="full not-publishable-block">
-          <div className="checkbox-row">
-            <input
-              type="checkbox"
-              id="notPublishable"
-              checked={notPublishable}
-              onChange={e => setNotPublishable(e.target.checked)}
-            />
-            <label htmlFor="notPublishable">Not Publishable</label>
+    <div style={card}>
+      {/* ── Header ── */}
+      <div style={header}>
+        <div>
+          <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", color: "#93c5fd", textTransform: "uppercase", marginBottom: 4 }}>
+            Workflow Stage
           </div>
-
-          <div className="note-text">
-            * If marked as Not Publishable, this will skip Supersede and directly proceed to Transcription.
-          </div>
+          <h2 style={{ margin: 0, fontSize: 20, fontWeight: 800, color: "#fff" }}>🔍 Search Stage</h2>
         </div>
-        {notPublishable && (
-  <div className="field full">
-    <label>Not Publishable Reason</label>
-
-    <textarea
-      name="notPublishableReason"
-      placeholder="Enter reason"
-      defaultValue={searchData?.notPublishableReason || ""}
-      required
-    />
-  </div>
-)}
-
-        {/* ===== FILE ===== */}
-        <div className="field full">
-          <label>Upload PDF (Optional)</label>
-          <input type="file" name="pdf" accept="application/pdf" />
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 11, color: "#93c5fd", marginBottom: 4 }}>Ref ID</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: "#fff", fontFamily: "monospace" }}>{refId}</div>
         </div>
       </div>
 
-      {/* ===== SUBMIT ===== */}
-      <button
-        className="submit-btn"
-        disabled={
-          loading ||
-          !statusUpdated ||
-          status === "Waiting Response"
-        }
-      >
-        {loading ? "Submitting..." : "Submit Search"}
-      </button>
-    </form>
+      <form id="sds-search-form" onSubmit={handleSubmit} style={{ padding: "20px 24px 24px" }}>
+
+        {/* ── Section: Language Detection ── */}
+        <SectionLabel icon="🌐" title="Language Detection" />
+        <div style={sectionBox}>
+          <div style={grid2}>
+            <div style={field}>
+              <FieldLabel>SDS Language</FieldLabel>
+              <select
+                value={language}
+                onChange={e => { setLanguage(e.target.value); if (e.target.value !== "Others") setLanguageOther(""); }}
+                style={sel}
+              >
+                {LANGUAGES.map(l => <option key={l} value={l}>{l}</option>)}
+              </select>
+            </div>
+
+            {language === "Others" && (
+              <div style={field}>
+                <FieldLabel>Specify Language</FieldLabel>
+                <input
+                  type="text"
+                  placeholder="Enter language name"
+                  value={languageOther}
+                  onChange={e => setLanguageOther(e.target.value)}
+                  style={inp}
+                />
+              </div>
+            )}
+
+            <div style={{ display: "flex", alignItems: "flex-end", paddingBottom: 2 }}>
+              <div style={{
+                display: "inline-flex", alignItems: "center", gap: 6,
+                padding: "6px 14px", borderRadius: 999, fontWeight: 700, fontSize: 12,
+                background: isMultilingual ? "#fef3c7" : "#dcfce7",
+                color: isMultilingual ? "#92400e" : "#166534",
+                border: `1px solid ${isMultilingual ? "#fbbf24" : "#86efac"}`,
+              }}>
+                <span style={{ fontSize: 14 }}>{isMultilingual ? "🌍" : "🇬🇧"}</span>
+                {isMultilingual ? `Multilingual — ${displayLanguage}` : "English"}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* ── Section: Search Details ── */}
+        <SectionLabel icon="📋" title="Search Details" />
+        <div style={sectionBox}>
+          <div style={grid3}>
+            <div style={field}>
+              <FieldLabel>Search Comments</FieldLabel>
+              <select name="searchType" defaultValue={searchData?.searchType || ""} style={sel}>
+                <option value="" disabled>Select</option>
+                {SEARCH_COMMENTS.map(v => <option key={v}>{v}</option>)}
+              </select>
+            </div>
+            <div style={field}>
+              <FieldLabel>Search Comments 1</FieldLabel>
+              <select name="comments1" defaultValue={searchData?.comments1 || ""} style={sel}>
+                <option value="" disabled>Select</option>
+                {SEARCH_COMMENTS_1.map(v => <option key={v}>{v}</option>)}
+              </select>
+            </div>
+            <div style={field}>
+              <FieldLabel>Search Comments 2</FieldLabel>
+              <select name="comments2" defaultValue={searchData?.comments2 || ""} style={sel}>
+                <option value="" disabled>Select</option>
+                {SEARCH_COMMENTS_2.map(v => <option key={v}>{v}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div style={{ ...grid3, marginTop: 12 }}>
+            <div style={field}>
+              <FieldLabel>Websearch Link 1</FieldLabel>
+              <input name="websearch1" placeholder="https://" defaultValue={searchData?.websearch1 || ""} style={inp} />
+            </div>
+            <div style={field}>
+              <FieldLabel>Websearch Link 2</FieldLabel>
+              <input name="websearch2" placeholder="https://" defaultValue={searchData?.websearch2 || ""} style={inp} />
+            </div>
+            <div style={field}>
+              <FieldLabel>Websearch Link 3</FieldLabel>
+              <input name="websearch3" placeholder="https://" defaultValue={searchData?.websearch3 || ""} style={inp} />
+            </div>
+          </div>
+
+          <div style={{ ...grid2, marginTop: 12 }}>
+            <div style={field}>
+              <FieldLabel>Mail ID / Source</FieldLabel>
+              <input name="mailId" placeholder="Enter email or source" defaultValue={searchData?.mailId || ""} style={inp} />
+            </div>
+            <div />
+          </div>
+        </div>
+
+        {/* ── Section: Dates & Notes ── */}
+        <SectionLabel icon="📅" title="Dates & Notes" />
+        <div style={sectionBox}>
+          <div style={grid2}>
+            <div style={field}>
+              <FieldLabel>Start Date</FieldLabel>
+              <input type="date" name="startDate" defaultValue={searchData?.startDate || ""} style={inp} />
+            </div>
+            <div style={field}>
+              <FieldLabel>End Date</FieldLabel>
+              <input type="date" name="endDate" defaultValue={searchData?.endDate || ""} style={inp} />
+            </div>
+            <div style={{ ...field, gridColumn: "span 2" }}>
+              <FieldLabel>Remarks</FieldLabel>
+              <textarea name="remarks" defaultValue={searchData?.remarks || ""} rows={3} style={ta} />
+            </div>
+            <div style={{ ...field, gridColumn: "span 2" }}>
+              <FieldLabel>Supersede Observation</FieldLabel>
+              <textarea name="supersedeObservation" defaultValue={searchData?.supersedeObservation || ""} rows={3} style={ta} />
+            </div>
+          </div>
+        </div>
+
+        {/* ── Section: Status ── */}
+        <SectionLabel icon="📌" title="Status Update" />
+        <div style={sectionBox}>
+          <div style={{ display: "flex", gap: 12, alignItems: "flex-end", flexWrap: "wrap" }}>
+            <div style={{ flex: "1 1 200px" }}>
+              <FieldLabel>Current Status</FieldLabel>
+              <select value={status} onChange={e => { setStatus(e.target.value); setStatusUpdated(false); }} style={sel}>
+                <option value="" disabled>Select Status</option>
+                <option value="File available">File available</option>
+                <option value="No file Found">No file Found</option>
+                <option value="Waiting Response">Waiting Response</option>
+              </select>
+            </div>
+            <button type="button" onClick={handleStatusUpdate} disabled={!status} style={updateBtn}>
+              Update Status
+            </button>
+            {statusUpdated && (
+              <span style={{ fontSize: 12, color: "#16a34a", fontWeight: 700 }}>✓ Saved</span>
+            )}
+          </div>
+        </div>
+
+        {/* ── Section: Not Publishable ── */}
+        <div style={{ ...sectionBox, background: notPublishable ? "#fef2f2" : "#f8fafc", borderColor: notPublishable ? "#fca5a5" : "#e2e8f0" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+            <input
+              type="checkbox"
+              checked={notPublishable}
+              onChange={e => setNotPublishable(e.target.checked)}
+              style={{ width: 16, height: 16, cursor: "pointer" }}
+            />
+            <span style={{ fontWeight: 700, fontSize: 14, color: notPublishable ? "#dc2626" : "#0f172a" }}>
+              Not Publishable
+            </span>
+          </label>
+          <p style={{ margin: "6px 0 0 26px", fontSize: 12, color: "#475569" }}>
+            If checked, this record will skip Supersede and go directly to Transcription.
+          </p>
+          {notPublishable && (
+            <div style={{ marginTop: 10 }}>
+              <FieldLabel>Reason for Not Publishable</FieldLabel>
+              <textarea
+                name="notPublishableReason"
+                placeholder="Enter reason"
+                defaultValue={searchData?.notPublishableReason || ""}
+                rows={2}
+                required
+                style={ta}
+              />
+            </div>
+          )}
+        </div>
+
+        {/* ── Section: PDF Upload ── */}
+        <SectionLabel icon="📎" title="PDF Upload" />
+        <div style={{ ...sectionBox, display: "flex", alignItems: "center", gap: 16 }}>
+          <label style={{
+            display: "flex", alignItems: "center", gap: 10, padding: "10px 20px",
+            borderRadius: 8, border: "2px dashed #cbd5e1", background: "#f8fafc",
+            cursor: "pointer", flex: 1, color: "#475569", fontSize: 13, fontWeight: 600,
+          }}>
+            <span style={{ fontSize: 20 }}>📄</span>
+            <span>Click to upload PDF (optional)</span>
+            <input type="file" name="pdf" accept="application/pdf" style={{ display: "none" }} />
+          </label>
+        </div>
+
+        {/* ── Submit ── */}
+        <div style={{ marginTop: 20, display: "flex", gap: 12, alignItems: "center" }}>
+          <button
+            type="submit"
+            disabled={loading || !statusUpdated || status === "Waiting Response"}
+            style={{
+              padding: "12px 32px", borderRadius: 10, border: "none",
+              background: (loading || !statusUpdated || status === "Waiting Response") ? "#94a3b8" : "#2563eb",
+              color: "#fff", fontWeight: 800, fontSize: 15, cursor: (loading || !statusUpdated || status === "Waiting Response") ? "not-allowed" : "pointer",
+              boxShadow: "0 4px 14px rgba(37,99,235,0.35)",
+            }}
+          >
+            {loading ? "Submitting..." : "✓ Submit Search"}
+          </button>
+          {!statusUpdated && (
+            <span style={{ fontSize: 12, color: "#f59e0b", fontWeight: 600 }}>
+              ⚠ Update Status first to enable submit
+            </span>
+          )}
+        </div>
+
+      </form>
+    </div>
   );
 }
+
+/* ── Sub-components ── */
+function SectionLabel({ icon, title }) {
+  return (
+    <div style={{ display: "flex", alignItems: "center", gap: 8, margin: "18px 0 8px", fontSize: 12, fontWeight: 700, color: "#2563eb", textTransform: "uppercase", letterSpacing: "0.06em" }}>
+      <span>{icon}</span>
+      <span>{title}</span>
+      <div style={{ flex: 1, height: 1, background: "#e2e8f0", marginLeft: 6 }} />
+    </div>
+  );
+}
+
+function FieldLabel({ children }) {
+  return <div style={{ fontSize: 11, fontWeight: 700, color: "#1e293b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 5 }}>{children}</div>;
+}
+
+/* ── Styles ── */
+const card       = { background: "#fff", borderRadius: 14, border: "1px solid #e2e8f0", boxShadow: "0 4px 20px rgba(0,0,0,0.08)", overflow: "hidden" };
+const header     = { background: "linear-gradient(135deg, #1e40af 0%, #2563eb 60%, #3b82f6 100%)", padding: "20px 24px", display: "flex", justifyContent: "space-between", alignItems: "center" };
+const sectionBox = { background: "#f8fafc", borderRadius: 10, border: "1.5px solid #cbd5e1", padding: "14px 16px", marginBottom: 4 };
+const grid2      = { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: "12px 16px" };
+const grid3      = { display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: "12px 16px" };
+const field      = { display: "flex", flexDirection: "column" };
+const sel        = { padding: "8px 10px", borderRadius: 8, border: "2px solid #94a3b8", background: "#fff", fontSize: 13, color: "#0f172a", width: "100%", boxSizing: "border-box", outline: "none" };
+const inp        = { padding: "8px 10px", borderRadius: 8, border: "2px solid #94a3b8", background: "#fff", fontSize: 13, color: "#0f172a", width: "100%", boxSizing: "border-box", outline: "none" };
+const ta         = { padding: "8px 10px", borderRadius: 8, border: "2px solid #94a3b8", background: "#fff", fontSize: 13, color: "#0f172a", width: "100%", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" };
+const updateBtn  = { padding: "9px 20px", borderRadius: 8, border: "none", background: "#0f172a", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" };
