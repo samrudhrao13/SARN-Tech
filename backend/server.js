@@ -5816,7 +5816,8 @@ app.get("/admin/dq/reports-data", async (req, res) => {
     usersSnap.docs.forEach(d => { userMap[d.id] = d.data().name || d.data().email || d.id; });
 
     const sheetsSnap = await db.collection("dq_sheets").get();
-    const userStats = {};
+    // Key: uid|||sheetId — one entry per user per sheet
+    const ubStats = {};
 
     for (const sheetDoc of sheetsSnap.docs) {
       const sheetId = sheetDoc.id;
@@ -5831,27 +5832,23 @@ app.get("/admin/dq/reports-data", async (req, res) => {
         const updatedAt = d.updatedAt ? new Date(d.updatedAt) : null;
         const isCompleted = d.billingReady === true;
 
-        const inPeriodAssigned = !fromDate || (assignedAt && assignedAt >= fromDate && assignedAt <= toDate);
         const inPeriodCompleted = isCompleted && (!fromDate || (updatedAt && updatedAt >= fromDate && updatedAt <= toDate));
+        const inPeriodAssigned = !fromDate || (assignedAt && assignedAt >= fromDate && assignedAt <= toDate) || inPeriodCompleted;
 
         if (!inPeriodAssigned && !inPeriodCompleted) continue;
 
-        if (!userStats[uid]) {
-          userStats[uid] = {
-            userId: uid, name: userMap[uid] || uid,
-            totalAssigned: 0, totalCompleted: 0,
-            sheetSet: new Set(), records: [],
+        const k = `${uid}|||${sheetId}`;
+        if (!ubStats[k]) {
+          ubStats[k] = {
+            userId: uid, name: userMap[uid] || uid, sheetId,
+            totalAssigned: 0, totalCompleted: 0, records: [],
           };
         }
 
-        if (inPeriodAssigned) {
-          userStats[uid].totalAssigned++;
-          userStats[uid].sheetSet.add(sheetId);
-        }
-
+        if (inPeriodAssigned) ubStats[k].totalAssigned++;
         if (inPeriodCompleted) {
-          userStats[uid].totalCompleted++;
-          userStats[uid].records.push({
+          ubStats[k].totalCompleted++;
+          ubStats[k].records.push({
             sheet: sheetId,
             refId: recDoc.id,
             chemical: d.common?.chemicalProduct || d.chemicalProduct || "",
@@ -5861,17 +5858,22 @@ app.get("/admin/dq/reports-data", async (req, res) => {
       }
     }
 
-    const users = Object.values(userStats).map(u => ({
-      ...u, sheets: [...u.sheetSet].sort(), sheetSet: undefined,
-    })).sort((a, b) => b.totalAssigned - a.totalAssigned);
+    // One row per user per sheet, sorted by assigned desc
+    const rows = Object.values(ubStats)
+      .sort((a, b) => b.totalAssigned - a.totalAssigned || a.name.localeCompare(b.name));
 
-    const totals = users.reduce((acc, u) => {
-      acc.totalAssigned += u.totalAssigned;
-      acc.totalCompleted += u.totalCompleted;
+    // Unique users for filter dropdown
+    const seen = {};
+    rows.forEach(r => { seen[r.userId] = r.name; });
+    const users = Object.entries(seen).map(([userId, name]) => ({ userId, name })).sort((a,b) => a.name.localeCompare(b.name));
+
+    const totals = rows.reduce((acc, r) => {
+      acc.totalAssigned += r.totalAssigned;
+      acc.totalCompleted += r.totalCompleted;
       return acc;
     }, { totalAssigned: 0, totalCompleted: 0 });
 
-    res.json({ ok: true, period, totals, users });
+    res.json({ ok: true, period, totals, rows, users });
   } catch (err) {
     console.error("DQ REPORTS ERROR:", err);
     res.status(500).json({ ok: false, error: err.message });

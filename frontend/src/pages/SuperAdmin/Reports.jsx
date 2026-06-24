@@ -4,13 +4,13 @@ import api from "../../config/apiClient";
 const BACKEND = import.meta.env.VITE_API_URL || "https://sarn-backend-862276535294.asia-south1.run.app";
 
 export default function SuperAdminReports() {
-  const [period, setPeriod]   = useState("week");
-  const [sds, setSds]         = useState(null);
-  const [dq, setDq]           = useState(null);
-  const [batch, setBatch]     = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [period, setPeriod]       = useState("week");
+  const [sds, setSds]             = useState(null);
+  const [dq, setDq]               = useState(null);
+  const [batch, setBatch]         = useState(null);
+  const [loading, setLoading]     = useState(false);
   const [dlLoading, setDlLoading] = useState(false);
-  const [error, setError]     = useState("");
+  const [error, setError]         = useState("");
 
   async function loadReport() {
     setLoading(true);
@@ -33,17 +33,18 @@ export default function SuperAdminReports() {
 
   function downloadPDF() {
     setDlLoading(true);
-    const url = `${BACKEND}/admin/report/superadmin-pdf?period=${period}`;
     const a = document.createElement("a");
-    a.href = url; a.target = "_blank"; a.rel = "noopener noreferrer"; a.click();
+    a.href = `${BACKEND}/admin/report/superadmin-pdf?period=${period}`;
+    a.target = "_blank"; a.rel = "noopener noreferrer"; a.click();
     setTimeout(() => setDlLoading(false), 2000);
   }
 
-  /* ── derived counts ── */
-  const sdsT  = sds?.totals  || {};
-  const dqT   = dq?.totals   || {};
+  /* ── Totals ── */
+  const sdsT   = sds?.totals   || {};
+  const dqT    = dq?.totals    || {};
   const batchT = batch?.totals || {};
 
+  /* ── SDS stage table ── */
   const sdsStages = [
     { label: "Search",        e: sdsT.searchE        || 0, ml: sdsT.searchML        || 0 },
     { label: "Supersede",     e: sdsT.supersedeE     || 0, ml: sdsT.supersedeML     || 0 },
@@ -53,36 +54,41 @@ export default function SuperAdminReports() {
   const sdsTotalE  = sdsStages.reduce((s, r) => s + r.e,  0);
   const sdsTotalML = sdsStages.reduce((s, r) => s + r.ml, 0);
 
-  /* ── merge user rows ── */
-  const allUserIds = new Set([
-    ...(sds?.users  || []).map(u => u.userId),
-    ...(dq?.users   || []).map(u => u.userId),
-    ...(batch?.users|| []).map(u => u.userId),
-  ]);
-  const sdsMap   = Object.fromEntries((sds?.users   || []).map(u => [u.userId, u]));
-  const dqMap    = Object.fromEntries((dq?.users    || []).map(u => [u.userId, u]));
-  const batchMap = Object.fromEntries((batch?.users || []).map(u => [u.userId, u]));
-
-  const mergedUsers = [...allUserIds].map(uid => {
-    const s  = sdsMap[uid]   || {};
-    const d  = dqMap[uid]    || {};
-    const b  = batchMap[uid] || {};
-    const name = s.name || d.name || b.name || uid;
-    const sdsTotal   = (s.total || 0);
-    const dqTotal    = (d.totalCompleted || 0);
-    const batchTotal = (b.totalCompleted || 0);
-    return {
-      uid, name,
-      sdsSearch:  (s.searchE || 0) + (s.searchML || 0),
-      sdsSupersede: (s.supersedeE || 0) + (s.supersedeML || 0),
-      sdsTrans:   (s.transcriptionE || 0) + (s.transcriptionML || 0),
-      sdsBilling: (s.billingE || 0) + (s.billingML || 0),
-      sdsTotal, dqTotal, batchTotal,
-      grand: sdsTotal + dqTotal + batchTotal,
+  /* ── Build per-(user × business) combined rows ── */
+  const combMap = {};
+  function getComb(uid, sheetId, name) {
+    const k = `${uid}|||${sheetId}`;
+    if (!combMap[k]) combMap[k] = {
+      uid, name, sheetId,
+      sdsSearch: 0, sdsSupersede: 0, sdsTrans: 0, sdsBilling: 0,
+      dq: 0, batch: 0,
     };
-  }).sort((a, b) => b.grand - a.grand);
+    return combMap[k];
+  }
 
-  const periodLabel = { today: "Today (IST)", week: "Last 7 Days", month: "This Month" }[period];
+  (sds?.rows || []).forEach(r => {
+    const c = getComb(r.userId, r.sheetId, r.name);
+    c.sdsSearch    = (r.searchE||0)        + (r.searchML||0);
+    c.sdsSupersede = (r.supersedeE||0)     + (r.supersedeML||0);
+    c.sdsTrans     = (r.transcriptionE||0) + (r.transcriptionML||0);
+    c.sdsBilling   = (r.billingE||0)       + (r.billingML||0);
+  });
+  (dq?.rows || []).forEach(r => {
+    const c = getComb(r.userId, r.sheetId, r.name);
+    c.dq = r.totalCompleted || 0;
+  });
+  (batch?.rows || []).forEach(r => {
+    const c = getComb(r.userId, r.sheetId, r.name);
+    c.batch = r.completed || 0;
+  });
+
+  const combinedRows = Object.values(combMap)
+    .map(c => ({ ...c, grand: c.sdsSearch + c.sdsSupersede + c.sdsTrans + c.sdsBilling + c.dq + c.batch }))
+    .filter(c => c.grand > 0)
+    .sort((a, b) => b.grand - a.grand || a.name.localeCompare(b.name));
+
+  const hasData = sds || dq || batch;
+  const periodLabel = { today: "Today (IST)", week: "Last 7 Days", month: "This Month" }[period] || period;
 
   return (
     <>
@@ -90,14 +96,14 @@ export default function SuperAdminReports() {
         Executive Reports
       </h2>
       <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: 13 }}>
-        Consolidated workflow stage counts across SDS, DQ and Batch for the selected period.
+        Distributed counts per user per business — SDS, DQ and Batch.
       </p>
 
       {/* ── Control Card ── */}
       <div style={controlCard}>
         <div style={{ display: "flex", gap: 10, alignItems: "flex-end", flexWrap: "wrap" }}>
           <div>
-            <div style={label}>Period</div>
+            <div style={labelStyle}>Period</div>
             <select value={period} onChange={e => setPeriod(e.target.value)} style={sel}>
               <option value="today">Today</option>
               <option value="week">Last 7 Days</option>
@@ -115,44 +121,28 @@ export default function SuperAdminReports() {
 
       {error && <p style={{ color: "#dc2626", fontWeight: 600, marginBottom: 12 }}>{error}</p>}
 
-      {(sds || dq || batch) && (
+      {hasData && (
         <>
           <div style={periodBadge}>{periodLabel}</div>
 
           {/* ── Top Summary Cards ── */}
           <div style={cardRow}>
-            <SummaryCard
-              title="SDS Workflow"
-              color="#2563eb"
-              rows={[
-                { label: "Total Assigned", value: sdsT.totalAssigned || 0 },
-                { label: "Total Completed", value: sdsT.total || 0 },
-              ]}
-            />
-            <SummaryCard
-              title="DQ Workflow"
-              color="#7c3aed"
-              rows={[
-                { label: "Total Assigned", value: dqT.totalAssigned || 0 },
-                { label: "Total Completed", value: dqT.totalCompleted || 0 },
-              ]}
-            />
-            <SummaryCard
-              title="Batch Workflow"
-              color="#0891b2"
-              rows={[
-                { label: "Total Assigned", value: batchT.totalAssigned || 0 },
-                { label: "Total Completed", value: batchT.totalCompleted || 0 },
-              ]}
-            />
-            <SummaryCard
-              title="Grand Total"
-              color="#16a34a"
-              rows={[
-                { label: "All Assigned", value: (sdsT.totalAssigned||0) + (dqT.totalAssigned||0) + (batchT.totalAssigned||0) },
-                { label: "All Completed", value: (sdsT.total||0) + (dqT.totalCompleted||0) + (batchT.totalCompleted||0) },
-              ]}
-            />
+            <SummaryCard title="SDS Workflow"  color="#2563eb" rows={[
+              { label: "Total Assigned",  value: sdsT.totalAssigned || 0 },
+              { label: "Total Completed", value: sdsT.total || 0 },
+            ]} />
+            <SummaryCard title="DQ Workflow"   color="#7c3aed" rows={[
+              { label: "Total Assigned",  value: dqT.totalAssigned || 0 },
+              { label: "Total Completed", value: dqT.totalCompleted || 0 },
+            ]} />
+            <SummaryCard title="Batch Workflow" color="#0891b2" rows={[
+              { label: "Total Assigned",  value: batchT.totalAssigned || 0 },
+              { label: "Total Completed", value: batchT.totalCompleted || 0 },
+            ]} />
+            <SummaryCard title="Grand Total"   color="#16a34a" rows={[
+              { label: "All Assigned",  value: (sdsT.totalAssigned||0) + (dqT.totalAssigned||0) + (batchT.totalAssigned||0) },
+              { label: "All Completed", value: (sdsT.total||0) + (dqT.totalCompleted||0) + (batchT.totalCompleted||0) },
+            ]} />
           </div>
 
           {/* ── SDS Stage Breakdown ── */}
@@ -197,9 +187,9 @@ export default function SuperAdminReports() {
             <div style={section}>
               <SectionTitle>DQ Workflow — Summary</SectionTitle>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <Chip label={`Assigned: ${dqT.totalAssigned || 0}`}   color="blue"   />
-                <Chip label={`Completed: ${dqT.totalCompleted || 0}`} color="green"  />
-                <Chip label={`Pending: ${(dqT.totalAssigned||0) - (dqT.totalCompleted||0)}`} color="amber" />
+                <Chip label={`Assigned: ${dqT.totalAssigned || 0}`}   color="blue"  />
+                <Chip label={`Completed: ${dqT.totalCompleted || 0}`} color="green" />
+                <Chip label={`Pending: ${Math.max(0,(dqT.totalAssigned||0)-(dqT.totalCompleted||0))}`} color="amber" />
               </div>
             </div>
           )}
@@ -209,44 +199,53 @@ export default function SuperAdminReports() {
             <div style={section}>
               <SectionTitle>Batch Workflow — Summary</SectionTitle>
               <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
-                <Chip label={`Assigned: ${batchT.totalAssigned || 0}`}   color="blue"   />
-                <Chip label={`Completed: ${batchT.totalCompleted || 0}`} color="green"  />
-                <Chip label={`Pending: ${(batchT.totalAssigned||0) - (batchT.totalCompleted||0)}`} color="amber" />
+                <Chip label={`Assigned: ${batchT.totalAssigned || 0}`}   color="blue"  />
+                <Chip label={`Completed: ${batchT.totalCompleted || 0}`} color="green" />
+                <Chip label={`Pending: ${Math.max(0,(batchT.totalAssigned||0)-(batchT.totalCompleted||0))}`} color="amber" />
               </div>
             </div>
           )}
 
-          {/* ── Combined User Table ── */}
-          {mergedUsers.length > 0 && (
+          {/* ── Combined User × Business Table ── */}
+          {combinedRows.length > 0 && (
             <div style={section}>
-              <SectionTitle>User-wise Breakdown</SectionTitle>
+              <SectionTitle>
+                User-wise Breakdown by Business
+                <span style={{ fontSize: 11, fontWeight: 400, color: "#64748b", marginLeft: 10 }}>
+                  {new Set(combinedRows.map(r => r.uid)).size} users · {combinedRows.length} rows (one per user per sheet)
+                </span>
+              </SectionTitle>
               <div style={{ ...tableWrap, maxHeight: "calc(100vh - 200px)" }}>
-                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 800 }}>
+                <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 860 }}>
                   <thead>
                     <tr style={{ background: "#0f172a", color: "#fff", position: "sticky", top: 0, zIndex: 2 }}>
                       <th style={th}>#</th>
                       <th style={th}>User</th>
+                      <th style={th}>Business</th>
                       <th style={{ ...th, textAlign: "center" }}>SDS Search</th>
-                      <th style={{ ...th, textAlign: "center" }}>SDS Supersede</th>
+                      <th style={{ ...th, textAlign: "center" }}>SDS Supr.</th>
                       <th style={{ ...th, textAlign: "center" }}>SDS Trans.</th>
                       <th style={{ ...th, textAlign: "center" }}>SDS Billing</th>
                       <th style={{ ...th, textAlign: "center" }}>DQ</th>
                       <th style={{ ...th, textAlign: "center" }}>Batch</th>
-                      <th style={{ ...th, textAlign: "center" }}>Grand Total</th>
+                      <th style={{ ...th, textAlign: "center" }}>Total</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {mergedUsers.map((u, i) => (
-                      <tr key={u.uid} style={{ background: i % 2 === 0 ? "#f8fafc" : "#fff" }}>
-                        <td style={{ ...td, color: "#94a3b8", fontSize: 11, textAlign: "center", width: 40 }}>{i + 1}</td>
-                        <td style={{ ...td, fontWeight: 600 }}>{u.name}<br /><span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 400 }}>{u.uid}</span></td>
-                        <td style={{ ...td, textAlign: "center" }}>{u.sdsSearch  || "-"}</td>
-                        <td style={{ ...td, textAlign: "center" }}>{u.sdsSupersede || "-"}</td>
-                        <td style={{ ...td, textAlign: "center" }}>{u.sdsTrans  || "-"}</td>
-                        <td style={{ ...td, textAlign: "center" }}>{u.sdsBilling || "-"}</td>
-                        <td style={{ ...td, textAlign: "center" }}>{u.dqTotal   || "-"}</td>
-                        <td style={{ ...td, textAlign: "center" }}>{u.batchTotal|| "-"}</td>
-                        <td style={{ ...td, textAlign: "center", fontWeight: 700, color: "#0f172a" }}>{u.grand}</td>
+                    {combinedRows.map((c, i) => (
+                      <tr key={`${c.uid}|||${c.sheetId}`} style={{ background: i % 2 === 0 ? "#f8fafc" : "#fff" }}>
+                        <td style={{ ...td, color: "#94a3b8", fontSize: 11, textAlign: "center", width: 36 }}>{i + 1}</td>
+                        <td style={{ ...td, fontWeight: 600 }}>{c.name}</td>
+                        <td style={{ ...td }}>
+                          <span style={sheetBadge}>{(c.sheetId || "").replace(/_/g, " ")}</span>
+                        </td>
+                        <td style={{ ...td, textAlign: "center" }}>{c.sdsSearch    || "—"}</td>
+                        <td style={{ ...td, textAlign: "center" }}>{c.sdsSupersede || "—"}</td>
+                        <td style={{ ...td, textAlign: "center" }}>{c.sdsTrans     || "—"}</td>
+                        <td style={{ ...td, textAlign: "center" }}>{c.sdsBilling   || "—"}</td>
+                        <td style={{ ...td, textAlign: "center" }}>{c.dq           || "—"}</td>
+                        <td style={{ ...td, textAlign: "center" }}>{c.batch        || "—"}</td>
+                        <td style={{ ...td, textAlign: "center", fontWeight: 700, color: "#1d4ed8" }}>{c.grand}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -257,7 +256,7 @@ export default function SuperAdminReports() {
         </>
       )}
 
-      {!sds && !dq && !batch && !loading && (
+      {!hasData && !loading && (
         <div style={{ padding: "48px 0", textAlign: "center", color: "#94a3b8", fontSize: 14 }}>
           Select a period and click <b>Load Report</b> to view consolidated counts.
         </div>
@@ -308,7 +307,7 @@ function stageDot(stage) {
 
 /* ── Styles ── */
 const controlCard = { background: "#fff", border: "1px solid #e2e8f0", borderRadius: 10, padding: "16px 20px", marginBottom: 20, boxShadow: "0 2px 8px rgba(0,0,0,0.04)" };
-const label       = { fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 };
+const labelStyle  = { fontSize: 11, fontWeight: 700, color: "#64748b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: 4 };
 const sel         = { padding: "8px 12px", borderRadius: 8, border: "1px solid #cbd5e1", background: "#f8fafc", fontSize: 13 };
 const primaryBtn  = { padding: "8px 20px", borderRadius: 8, border: "none", background: "#2563eb", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 };
 const exportBtn   = { padding: "8px 20px", borderRadius: 8, border: "none", background: "#0f172a", color: "#fff", fontWeight: 700, cursor: "pointer", fontSize: 13 };
@@ -316,5 +315,6 @@ const periodBadge = { display: "inline-block", padding: "4px 14px", borderRadius
 const cardRow     = { display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 20 };
 const section     = { marginBottom: 20 };
 const tableWrap   = { background: "#fff", borderRadius: 10, border: "1px solid #e2e8f0", overflowX: "auto", overflowY: "auto" };
-const th          = { padding: "10px 14px", textAlign: "left", fontWeight: 600, fontSize: 11, whiteSpace: "nowrap" };
-const td          = { padding: "9px 14px", borderBottom: "1px solid #f1f5f9", fontSize: 13, verticalAlign: "middle" };
+const th          = { padding: "10px 12px", textAlign: "left", fontWeight: 600, fontSize: 11, whiteSpace: "nowrap" };
+const td          = { padding: "9px 12px", borderBottom: "1px solid #f1f5f9", fontSize: 13, verticalAlign: "middle" };
+const sheetBadge  = { display: "inline-block", background: "#e2e8f0", color: "#334155", borderRadius: 4, padding: "2px 8px", fontSize: 12, fontWeight: 600 };
