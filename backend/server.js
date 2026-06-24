@@ -5741,6 +5741,7 @@ app.get("/admin/sds/reports-data", async (req, res) => {
             ubStats[k] = {
               userId: uid, name: userMap[uid] || uid, sheetId,
               totalAssigned: 0,
+              allTimeTotal: 0,
               searchE: 0, searchML: 0,
               supersedeE: 0, supersedeML: 0,
               transcriptionE: 0, transcriptionML: 0,
@@ -5750,6 +5751,7 @@ app.get("/admin/sds/reports-data", async (req, res) => {
           }
 
           ubStats[k].totalAssigned++; // total ever assigned — no period filter
+          if (completedAt) ubStats[k].allTimeTotal++; // all-time completed regardless of period
 
           if (inPeriodCompleted) {
             ubStats[k][`${stage}${langSuffix}`]++;
@@ -5778,10 +5780,11 @@ app.get("/admin/sds/reports-data", async (req, res) => {
 
     const totals = rows.reduce((acc, r) => {
       acc.totalAssigned += r.totalAssigned;
+      acc.allTimeTotal  += r.allTimeTotal;
       ["searchE","searchML","supersedeE","supersedeML","transcriptionE","transcriptionML","billingE","billingML","total"]
         .forEach(k => { acc[k] = (acc[k] || 0) + (r[k] || 0); });
       return acc;
-    }, { totalAssigned: 0, searchE:0, searchML:0, supersedeE:0, supersedeML:0, transcriptionE:0, transcriptionML:0, billingE:0, billingML:0, total:0 });
+    }, { totalAssigned: 0, allTimeTotal: 0, searchE:0, searchML:0, supersedeE:0, supersedeML:0, transcriptionE:0, transcriptionML:0, billingE:0, billingML:0, total:0 });
 
     res.json({ ok: true, period, totals, rows, users });
   } catch (err) {
@@ -5835,11 +5838,12 @@ app.get("/admin/dq/reports-data", async (req, res) => {
         if (!ubStats[k]) {
           ubStats[k] = {
             userId: uid, name: userMap[uid] || uid, sheetId,
-            totalAssigned: 0, totalCompleted: 0, records: [],
+            totalAssigned: 0, allTimeCompleted: 0, totalCompleted: 0, records: [],
           };
         }
 
         ubStats[k].totalAssigned++; // total ever assigned — no period filter
+        if (isCompleted) ubStats[k].allTimeCompleted++; // all-time completed regardless of period
         if (inPeriodCompleted) {
           ubStats[k].totalCompleted++;
           ubStats[k].records.push({
@@ -5862,10 +5866,11 @@ app.get("/admin/dq/reports-data", async (req, res) => {
     const users = Object.entries(seen).map(([userId, name]) => ({ userId, name })).sort((a,b) => a.name.localeCompare(b.name));
 
     const totals = rows.reduce((acc, r) => {
-      acc.totalAssigned += r.totalAssigned;
-      acc.totalCompleted += r.totalCompleted;
+      acc.totalAssigned     += r.totalAssigned;
+      acc.allTimeCompleted  += r.allTimeCompleted;
+      acc.totalCompleted    += r.totalCompleted;
       return acc;
-    }, { totalAssigned: 0, totalCompleted: 0 });
+    }, { totalAssigned: 0, allTimeCompleted: 0, totalCompleted: 0 });
 
     res.json({ ok: true, period, totals, rows, users });
   } catch (err) {
@@ -5919,11 +5924,12 @@ app.get("/admin/batch/reports-data", async (req, res) => {
         if (!ubStats[k]) {
           ubStats[k] = {
             userId: uid, name: userMap[uid] || uid, sheetId,
-            assigned: 0, completed: 0, records: [],
+            assigned: 0, allTimeCompleted: 0, completed: 0, records: [],
           };
         }
 
         ubStats[k].assigned++; // total ever assigned — no period filter
+        if (isCompleted) ubStats[k].allTimeCompleted++; // all-time completed regardless of period
 
         if (inPeriodCompleted) {
           ubStats[k].completed++;
@@ -5949,10 +5955,11 @@ app.get("/admin/batch/reports-data", async (req, res) => {
     const users = Object.entries(seen).map(([userId, name]) => ({ userId, name })).sort((a,b) => a.name.localeCompare(b.name));
 
     const totals = rows.reduce((acc, r) => {
-      acc.totalAssigned += r.assigned;
-      acc.totalCompleted += r.completed;
+      acc.totalAssigned    += r.assigned;
+      acc.allTimeCompleted += r.allTimeCompleted;
+      acc.totalCompleted   += r.completed;
       return acc;
-    }, { totalAssigned: 0, totalCompleted: 0 });
+    }, { totalAssigned: 0, allTimeCompleted: 0, totalCompleted: 0 });
 
     res.json({ ok: true, period, totals, rows, users });
   } catch (err) {

@@ -8,6 +8,8 @@ const PERIODS = [
   { key: "all",   label: "All Time" },
 ];
 
+const PERIOD_LABEL = { today: "Today", week: "This Week", month: "This Month", all: "All Time" };
+
 const STAGE_COLORS = {
   search:        { bg: "#eff6ff", text: "#1d4ed8" },
   supersede:     { bg: "#fefce8", text: "#b45309" },
@@ -54,6 +56,7 @@ export default function SDSReports() {
   const filtered = userFilter ? allRows.filter(r => r.userId === userFilter) : allRows;
   const t        = data?.totals || {};
   const uniqueUserCount = new Set(filtered.map(r => r.userId)).size;
+  const periodLabel = PERIOD_LABEL[period] || period;
 
   return (
     <div style={{ padding: "20px", minHeight: "100vh", background: "#f8fafc" }}>
@@ -87,16 +90,18 @@ export default function SDSReports() {
       {/* ── Summary Cards ── */}
       {data && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(130px, 1fr))", gap: 10, marginBottom: 24 }}>
-          <StatCard label="Total Assigned"    value={t.totalAssigned}    color="#3b82f6" bg="#eff6ff" />
-          <StatCard label="Completed"         value={t.total}            color="#16a34a" bg="#f0fdf4" />
-          <StatCard label="Search (E)"        value={t.searchE}          color="#1d4ed8" bg="#dbeafe" />
-          <StatCard label="Search (ML)"       value={t.searchML}         color="#7c3aed" bg="#ede9fe" />
-          <StatCard label="Supersede (E)"     value={t.supersedeE}       color="#b45309" bg="#fef3c7" />
-          <StatCard label="Supersede (ML)"    value={t.supersedeML}      color="#b45309" bg="#fde68a" />
-          <StatCard label="Trans. (E)"        value={t.transcriptionE}   color="#15803d" bg="#dcfce7" />
-          <StatCard label="Trans. (ML)"       value={t.transcriptionML}  color="#15803d" bg="#bbf7d0" />
-          <StatCard label="Billing (E)"       value={t.billingE}         color="#7e22ce" bg="#fae8ff" />
-          <StatCard label="Billing (ML)"      value={t.billingML}        color="#7e22ce" bg="#f5d0fe" />
+          <StatCard label="Total Assigned"               value={t.totalAssigned}                                             color="#3b82f6" bg="#eff6ff" />
+          <StatCard label="All-Time Completed"           value={t.allTimeTotal}                                              color="#16a34a" bg="#f0fdf4" />
+          <StatCard label={`Completed (${periodLabel})`} value={t.total}                                                     color="#0891b2" bg="#ecfeff" />
+          <StatCard label="Total Pending"                value={Math.max(0,(t.totalAssigned||0)-(t.allTimeTotal||0))}       color="#f59e0b" bg="#fef3c7" />
+          <StatCard label="Search (E)"                   value={t.searchE}                                                   color="#1d4ed8" bg="#dbeafe" />
+          <StatCard label="Search (ML)"                  value={t.searchML}                                                  color="#7c3aed" bg="#ede9fe" />
+          <StatCard label="Supersede (E)"                value={t.supersedeE}                                                color="#b45309" bg="#fef3c7" />
+          <StatCard label="Supersede (ML)"               value={t.supersedeML}                                               color="#b45309" bg="#fde68a" />
+          <StatCard label="Trans. (E)"                   value={t.transcriptionE}                                            color="#15803d" bg="#dcfce7" />
+          <StatCard label="Trans. (ML)"                  value={t.transcriptionML}                                           color="#15803d" bg="#bbf7d0" />
+          <StatCard label="Billing (E)"                  value={t.billingE}                                                  color="#7e22ce" bg="#fae8ff" />
+          <StatCard label="Billing (ML)"                 value={t.billingML}                                                 color="#7e22ce" bg="#f5d0fe" />
         </div>
       )}
 
@@ -111,6 +116,9 @@ export default function SDSReports() {
                 <Th>User</Th>
                 <Th>Business (Sheet)</Th>
                 <Th center>Assigned</Th>
+                <Th center>Prev. Completed</Th>
+                <Th center>Completed ({periodLabel})</Th>
+                <Th center>Total Pending</Th>
                 <Th center>Srch E</Th>
                 <Th center>Srch ML</Th>
                 <Th center>Supr E</Th>
@@ -119,7 +127,6 @@ export default function SDSReports() {
                 <Th center>Trans ML</Th>
                 <Th center>Bill E</Th>
                 <Th center>Bill ML</Th>
-                <Th center>Total</Th>
                 <Th center>PDF</Th>
               </tr>
             </thead>
@@ -131,6 +138,9 @@ export default function SDSReports() {
                     TOTAL ({uniqueUserCount} user{uniqueUserCount !== 1 ? "s" : ""}, {filtered.length} row{filtered.length !== 1 ? "s" : ""})
                   </td>
                   <Num v={t.totalAssigned} />
+                  <Num v={(t.allTimeTotal||0) - (t.total||0)} prev />
+                  <Num v={t.total} bold />
+                  <Num v={Math.max(0,(t.totalAssigned||0)-(t.allTimeTotal||0))} pending />
                   <Num v={t.searchE} />
                   <Num v={t.searchML} ml />
                   <Num v={t.supersedeE} />
@@ -139,20 +149,21 @@ export default function SDSReports() {
                   <Num v={t.transcriptionML} ml />
                   <Num v={t.billingE} />
                   <Num v={t.billingML} ml />
-                  <Num v={t.total} bold />
                   <td />
                 </tr>
               )}
 
               {filtered.length === 0 && (
-                <tr><td colSpan={13} style={{ textAlign: "center", padding: 30, color: "#94a3b8" }}>
-                  No data for this period
+                <tr><td colSpan={15} style={{ textAlign: "center", padding: 30, color: "#94a3b8" }}>
+                  No data available
                 </td></tr>
               )}
 
               {filtered.map((row, i) => {
-                const key        = `${row.userId}|||${row.sheetId}`;
-                const sheetLabel = (row.sheetId || "").replace(/_/g, " ");
+                const key            = `${row.userId}|||${row.sheetId}`;
+                const sheetLabel     = (row.sheetId || "").replace(/_/g, " ");
+                const prevCompleted  = Math.max(0, (row.allTimeTotal || 0) - (row.total || 0));
+                const totalPending   = Math.max(0, (row.totalAssigned || 0) - (row.allTimeTotal || 0));
 
                 return (
                   <React.Fragment key={key}>
@@ -170,6 +181,9 @@ export default function SDSReports() {
                         <span style={sheetBadge}>{sheetLabel}</span>
                       </td>
                       <Num v={row.totalAssigned} />
+                      <Num v={prevCompleted} prev />
+                      <Num v={row.total} bold />
+                      <Num v={totalPending} pending />
                       <Num v={row.searchE} />
                       <Num v={row.searchML} ml />
                       <Num v={row.supersedeE} />
@@ -178,7 +192,6 @@ export default function SDSReports() {
                       <Num v={row.transcriptionML} ml />
                       <Num v={row.billingE} />
                       <Num v={row.billingML} ml />
-                      <Num v={row.total} bold />
                       <td style={{ textAlign: "center", padding: "6px 10px" }}>
                         <button
                           onClick={e => { e.stopPropagation(); dlUserPDF(row.userId); }}
@@ -192,7 +205,7 @@ export default function SDSReports() {
                     {/* Expanded record list */}
                     {expandedRows.has(key) && (
                       <tr>
-                        <td colSpan={13} style={{ background: "#f1f5f9", padding: "0 16px 16px 32px" }}>
+                        <td colSpan={15} style={{ background: "#f1f5f9", padding: "0 16px 16px 32px" }}>
                           <div style={{ marginTop: 12 }}>
                             <strong style={{ fontSize: 13, color: "#0f172a" }}>
                               Completed Records — {row.name} / {sheetLabel} ({row.records?.length || 0})
@@ -266,14 +279,15 @@ function Th({ children, center }) {
   );
 }
 
-function Num({ v, ml, bold }) {
+function Num({ v, ml, bold, prev, pending }) {
+  const color = !v ? "#cbd5e1"
+    : pending ? "#dc2626"
+    : prev    ? "#2563eb"
+    : bold    ? "#0f172a"
+    : ml      ? "#7c3aed"
+    : "#0f172a";
   return (
-    <td style={{
-      padding: "9px 10px",
-      textAlign: "center",
-      fontWeight: bold ? 700 : 400,
-      color: !v ? "#cbd5e1" : ml ? "#7c3aed" : "#0f172a",
-    }}>
+    <td style={{ padding: "9px 10px", textAlign: "center", fontWeight: (bold || pending || prev) ? 700 : 400, color }}>
       {v || 0}
     </td>
   );

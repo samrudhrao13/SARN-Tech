@@ -8,6 +8,8 @@ const PERIODS = [
   { key: "all",   label: "All Time" },
 ];
 
+const PERIOD_LABEL = { today: "Today", week: "This Week", month: "This Month", all: "All Time" };
+
 export default function BatchReport() {
   const [period, setPeriod]             = useState("week");
   const [data, setData]                 = useState(null);
@@ -48,10 +50,23 @@ export default function BatchReport() {
   const t        = data?.totals || {};
   const uniqueUserCount = new Set(filtered.map(r => r.userId)).size;
 
+  // Totals derived from filtered rows
+  const filtTotals = filtered.reduce((acc, r) => {
+    acc.assigned         += r.assigned         || 0;
+    acc.allTimeCompleted += r.allTimeCompleted  || 0;
+    acc.completed        += r.completed         || 0;
+    return acc;
+  }, { assigned: 0, allTimeCompleted: 0, completed: 0 });
+  const filtPrev    = Math.max(0, filtTotals.allTimeCompleted - filtTotals.completed);
+  const filtPending = Math.max(0, filtTotals.assigned - filtTotals.allTimeCompleted);
+  const filtPct     = filtTotals.assigned ? Math.round((filtTotals.allTimeCompleted / filtTotals.assigned) * 100) : 0;
+
+  const periodLabel = PERIOD_LABEL[period] || period;
+
   return (
     <div style={{ padding: "20px", minHeight: "100vh", background: "#f8fafc" }}>
 
-      {/* ── Header ── */}
+      {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#0f172a" }}>Batch Monitoring Dashboard</h2>
@@ -60,7 +75,7 @@ export default function BatchReport() {
         <button onClick={dlTeamPDF} style={btnPrimary}>⬇ Download Team PDF</button>
       </div>
 
-      {/* ── Controls ── */}
+      {/* Controls */}
       <div style={{ display: "flex", gap: 10, marginBottom: 20, flexWrap: "wrap", alignItems: "center" }}>
         {PERIODS.map(p => (
           <button key={p.key} onClick={() => setPeriod(p.key)} style={periodBtn(period === p.key)}>
@@ -77,29 +92,31 @@ export default function BatchReport() {
         </select>
       </div>
 
-      {/* ── Summary Cards ── */}
+      {/* Summary Cards */}
       {data && (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))", gap: 12, marginBottom: 24 }}>
-          <StatCard label="Total Assigned"  value={t.totalAssigned}  color="#3b82f6" bg="#eff6ff" />
-          <StatCard label="Total Completed" value={t.totalCompleted} color="#16a34a" bg="#f0fdf4" />
-          <StatCard label="Pending"         value={Math.max(0, (t.totalAssigned||0) - (t.totalCompleted||0))} color="#f59e0b" bg="#fef3c7" />
-          <StatCard label="Active Users"    value={uniqueUserCount}  color="#8b5cf6" bg="#ede9fe" />
+          <StatCard label="Total Assigned"               value={t.totalAssigned}                                               color="#3b82f6" bg="#eff6ff" />
+          <StatCard label="All-Time Completed"           value={t.allTimeCompleted}                                            color="#16a34a" bg="#f0fdf4" />
+          <StatCard label={`Completed (${periodLabel})`} value={t.totalCompleted}                                              color="#0891b2" bg="#ecfeff" />
+          <StatCard label="Total Pending"                value={Math.max(0,(t.totalAssigned||0)-(t.allTimeCompleted||0))}     color="#f59e0b" bg="#fef3c7" />
+          <StatCard label="Active Users"                 value={uniqueUserCount}                                               color="#8b5cf6" bg="#ede9fe" />
         </div>
       )}
 
-      {/* ── Table ── */}
+      {/* Table */}
       {loading ? (
         <div style={{ textAlign: "center", padding: 40, color: "#64748b" }}>Loading...</div>
       ) : (
         <div style={{ background: "#fff", borderRadius: 10, border: "1px solid #e2e8f0", overflow: "auto" }}>
-          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>
+          <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 860 }}>
             <thead>
               <tr style={{ background: "#0f172a", color: "#fff" }}>
                 <th style={th}>User</th>
                 <th style={th}>Business (Sheet)</th>
                 <th style={{ ...th, textAlign: "center" }}>Assigned</th>
-                <th style={{ ...th, textAlign: "center" }}>Completed</th>
-                <th style={{ ...th, textAlign: "center" }}>Pending</th>
+                <th style={{ ...th, textAlign: "center" }}>Prev. Completed</th>
+                <th style={{ ...th, textAlign: "center" }}>Completed ({periodLabel})</th>
+                <th style={{ ...th, textAlign: "center" }}>Total Pending</th>
                 <th style={{ ...th, textAlign: "center" }}>% Done</th>
                 <th style={{ ...th, textAlign: "center" }}>PDF</th>
               </tr>
@@ -111,27 +128,27 @@ export default function BatchReport() {
                   <td style={{ padding: "8px 12px" }} colSpan={2}>
                     TOTAL ({uniqueUserCount} user{uniqueUserCount !== 1 ? "s" : ""}, {filtered.length} row{filtered.length !== 1 ? "s" : ""})
                   </td>
-                  <td style={{ textAlign: "center", padding: 8 }}>{t.totalAssigned}</td>
-                  <td style={{ textAlign: "center", padding: 8, color: "#86efac" }}>{t.totalCompleted}</td>
-                  <td style={{ textAlign: "center", padding: 8, color: "#fca5a5" }}>{Math.max(0, (t.totalAssigned||0) - (t.totalCompleted||0))}</td>
-                  <td style={{ textAlign: "center", padding: 8 }}>
-                    {t.totalAssigned ? Math.round((t.totalCompleted / t.totalAssigned) * 100) : 0}%
-                  </td>
+                  <td style={{ textAlign: "center", padding: 8 }}>{filtTotals.assigned}</td>
+                  <td style={{ textAlign: "center", padding: 8, color: "#93c5fd" }}>{filtPrev}</td>
+                  <td style={{ textAlign: "center", padding: 8, color: "#86efac" }}>{filtTotals.completed}</td>
+                  <td style={{ textAlign: "center", padding: 8, color: "#fca5a5" }}>{filtPending}</td>
+                  <td style={{ textAlign: "center", padding: 8 }}>{filtPct}%</td>
                   <td />
                 </tr>
               )}
 
               {filtered.length === 0 && (
-                <tr><td colSpan={7} style={{ textAlign: "center", padding: 30, color: "#94a3b8" }}>
-                  No data for this period
+                <tr><td colSpan={8} style={{ textAlign: "center", padding: 30, color: "#94a3b8" }}>
+                  No data available
                 </td></tr>
               )}
 
               {filtered.map((row, i) => {
-                const key     = `${row.userId}|||${row.sheetId}`;
-                const pending = Math.max(0, row.assigned - row.completed);
-                const pct     = row.assigned ? Math.round((row.completed / row.assigned) * 100) : 0;
-                const sheetLabel = (row.sheetId || "").replace(/_/g, " ");
+                const key                = `${row.userId}|||${row.sheetId}`;
+                const prevCompleted      = Math.max(0, (row.allTimeCompleted || 0) - (row.completed || 0));
+                const totalPending       = Math.max(0, (row.assigned || 0) - (row.allTimeCompleted || 0));
+                const pct                = row.assigned ? Math.round(((row.allTimeCompleted || 0) / row.assigned) * 100) : 0;
+                const sheetLabel         = (row.sheetId || "").replace(/_/g, " ");
 
                 return (
                   <React.Fragment key={key}>
@@ -149,9 +166,10 @@ export default function BatchReport() {
                         <span style={sheetBadge}>{sheetLabel}</span>
                       </td>
                       <td style={{ textAlign: "center", padding: 9, fontWeight: 700 }}>{row.assigned}</td>
-                      <td style={{ textAlign: "center", padding: 9, color: "#16a34a", fontWeight: 600 }}>{row.completed}</td>
-                      <td style={{ textAlign: "center", padding: 9, color: pending > 0 ? "#dc2626" : "#94a3b8" }}>
-                        {pending}
+                      <td style={{ textAlign: "center", padding: 9, color: "#2563eb", fontWeight: 600 }}>{prevCompleted}</td>
+                      <td style={{ textAlign: "center", padding: 9, color: "#16a34a", fontWeight: 600 }}>{row.completed || 0}</td>
+                      <td style={{ textAlign: "center", padding: 9, color: totalPending > 0 ? "#dc2626" : "#94a3b8", fontWeight: 600 }}>
+                        {totalPending}
                       </td>
                       <td style={{ textAlign: "center", padding: 9 }}>
                         <div style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
@@ -173,10 +191,10 @@ export default function BatchReport() {
 
                     {expandedRows.has(key) && (
                       <tr>
-                        <td colSpan={7} style={{ background: "#f1f5f9", padding: "0 16px 16px 32px" }}>
+                        <td colSpan={8} style={{ background: "#f1f5f9", padding: "0 16px 16px 32px" }}>
                           <div style={{ marginTop: 12 }}>
                             <strong style={{ fontSize: 13, color: "#0f172a" }}>
-                              Completed Records — {row.name} / {sheetLabel} ({row.records?.length || 0})
+                              Completed ({periodLabel}) — {row.name} / {sheetLabel} ({row.records?.length || 0})
                             </strong>
                             <div style={{ overflow: "auto", marginTop: 8 }}>
                               <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12, minWidth: 600 }}>
@@ -190,7 +208,7 @@ export default function BatchReport() {
                                 <tbody>
                                   {(row.records || []).length === 0 && (
                                     <tr><td colSpan={4} style={{ padding: 10, color: "#94a3b8", textAlign: "center" }}>
-                                      No completed records in this period
+                                      No records completed in this period
                                     </td></tr>
                                   )}
                                   {(row.records || []).map((r, j) => (
@@ -242,8 +260,8 @@ function langBadge(lang) {
   };
 }
 
-const th        = { padding: "10px 12px", textAlign: "left", fontWeight: 600, fontSize: 12 };
-const subTd     = { padding: "6px 10px", borderBottom: "1px solid #f1f5f9", verticalAlign: "middle" };
+const th         = { padding: "10px 12px", textAlign: "left", fontWeight: 600, fontSize: 12 };
+const subTd      = { padding: "6px 10px", borderBottom: "1px solid #f1f5f9", verticalAlign: "middle" };
 const sheetBadge = { display: "inline-block", background: "#e2e8f0", color: "#334155", borderRadius: 4, padding: "2px 8px", fontSize: 12, fontWeight: 600 };
 const btnPrimary = { padding: "8px 14px", background: "#2563eb", color: "#fff", border: "none", borderRadius: 6, fontWeight: 600, cursor: "pointer", fontSize: 13 };
 const btnSmall   = { padding: "4px 10px", background: "#0f172a", color: "#fff", border: "none", borderRadius: 4, fontSize: 11, fontWeight: 600, cursor: "pointer" };
