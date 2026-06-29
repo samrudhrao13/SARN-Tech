@@ -37,7 +37,7 @@ export default function SDSBilling() {
     setRows([]);
     try {
       const res = await api.get("/sds/list", {
-        params: { sheet: normalize(sheet), page: p, pageSize: PAGE_SIZE },
+        params: { sheet: normalize(sheet), page: p, pageSize: PAGE_SIZE, status: filter },
       });
       if (!res.data.ok) { alert("Failed to load billing data"); return; }
       const mapped = (res.data.rows || []).map((r) => ({
@@ -63,17 +63,13 @@ export default function SDSBilling() {
     localStorage.removeItem("sarn_admin_sds_bill_filter");
   }
 
-  const filteredRows = rows.filter((r) => {
-    if (filter === "READY") return r.billingReady;
-    if (filter === "PENDING") return !r.billingReady;
-    return true;
-  });
+  const filteredRows = rows;
 
   return (
     <>
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", gap: 16, marginBottom: 20 }}>
-        <button onClick={() => navigate("/admin/dashboard")} style={backBtn}>← Back</button>
+        <button onClick={() => navigate(-1)} style={backBtn}>← Back</button>
         <h1 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#0f172a" }}>SDS Billing – Workflow Summary</h1>
       </div>
 

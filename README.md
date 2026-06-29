@@ -22,10 +22,12 @@ A full-stack web application for managing Safety Data Sheet (SDS) references thr
 | Backend | Node.js + Express.js |
 | Database | Firebase Firestore |
 | Storage | Firebase Storage |
-| Auth | Firebase Authentication |
+| Auth | JWT (jsonwebtoken) — stateless, 12-hour tokens |
+| Password Security | bcryptjs — salt factor 12, lazy migration |
 | AI (Chatbot & Scanner) | Groq API (LLaMA 3.3 70B) |
 | SDS Scanner Microservice | Python 3 + Flask |
 | PDF Generation | PDFKit |
+| PDF Extraction | pdfjs-dist (NodeCMapReaderFactory for CJK) + pdf-parse fallback |
 | Excel Parsing | SheetJS (xlsx) |
 | Calls & Meetings | Google Calendar API v3 + Google Meet |
 | Email Notifications | Nodemailer (Gmail SMTP) |
@@ -35,6 +37,27 @@ A full-stack web application for managing Safety Data Sheet (SDS) references thr
 ---
 
 ## Features
+
+### Security
+
+#### JWT Authentication
+- Every login issues a signed **JSON Web Token** (JWT) with 12-hour expiry
+- Token payload: `userId`, `role`, `name`
+- `JWT_SECRET` stored exclusively as a Cloud Run environment variable
+- `verifyToken` middleware protects sensitive endpoints (`/admin/chat`, `/super-admin/reset-password`)
+- Axios request interceptor in `apiClient.js` automatically attaches `Authorization: Bearer <token>` to every API call — no per-component changes needed
+
+#### Password Hashing (bcrypt)
+- All passwords stored as **bcrypt hashes** (salt factor 12) — never plaintext
+- **Lazy migration**: on first login after upgrade, plaintext passwords are detected, validated, hashed, and replaced in Firestore transparently — no forced reset, no downtime
+- All new users and password resets store hashed values going forward
+- Superadmin credentials stored in Firestore (never hardcoded) and protected by the same bcrypt check
+
+#### Chatbot Prompt Injection Defense
+- **Input sanitizer** strips known injection phrases (`ignore previous instructions`, `forget everything`, `act as`, `jailbreak`, `DAN mode`, etc.) and caps input at 2,000 characters
+- **System prompt security rules** — absolute rules embedded in the LLM prompt that cannot be overridden by any user message: never reveal passwords, credentials, or raw context data; never follow jailbreak-style instructions
+
+---
 
 ### Role-Based Access Control
 - Three roles: **Super Admin**, **Admin**, and **User**
@@ -76,6 +99,8 @@ Manages Safety Data Sheet processing through four sequential stages:
 - All-time completed tracking vs period-filtered completed (correctly differentiated)
 - PDF report generation (downloadable) and on-screen table view
 - Date-range filtering for period-based reporting
+- **Server-side status filter** on SDS Billing — filtering by Ready/Pending is applied before pagination, so page count and totals correctly reflect only the filtered records
+- **Back button** on all billing pages uses browser history (`navigate(-1)`) instead of hardcoded dashboard redirect
 
 ### AI-Powered Chatbot
 - Floating chatbot widget available across all pages
@@ -84,7 +109,8 @@ Manages Safety Data Sheet processing through four sequential stages:
 - **PDF Translation** — translate PDF sections line-by-line with side-by-side view:
   - Original text on the left, translated text on the right
   - Sentence-level splitting with numbered-list LLM prompting guarantees perfect 1:1 alignment
-  - Supports all major languages
+  - Supports all major languages including Japanese and other CJK scripts
+- **Japanese / CJK PDF support** — uses `NodeCMapReaderFactory` to read character map files directly from the filesystem, enabling correct text extraction from Japanese SDS documents that previously failed silently
 
 ### SDS Scanner (AI Microservice)
 - Standalone Python + Flask microservice (`sds-scanner/`)
@@ -380,6 +406,7 @@ The `sds-scanner/` directory is a standalone Python Flask service:
 | `GOOGLE_CLIENT_ID` | Cloud Run env var | OAuth2 client ID for Google Meet |
 | `GOOGLE_CLIENT_SECRET` | Cloud Run env var | OAuth2 client secret |
 | `GOOGLE_REFRESH_TOKEN` | Cloud Run env var | OAuth2 refresh token (sarnproduction@sarntech.in) |
+| `JWT_SECRET` | Cloud Run env var | Secret key for signing JWT tokens — must be set before deploying auth |
 
 ---
 

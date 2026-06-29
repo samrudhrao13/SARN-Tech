@@ -50,6 +50,7 @@ export default function Login() {
       localStorage.setItem("userRole", role);
       localStorage.setItem("userId", user.userId);
       localStorage.setItem("mustReset", user.mustReset ? "true" : "false");
+      localStorage.setItem("authToken", res.data.token);
 
       // ==============================
       // FORCE PASSWORD RESET
