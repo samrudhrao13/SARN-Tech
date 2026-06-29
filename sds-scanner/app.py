@@ -14,8 +14,12 @@ from utils.pictogram  import detect_pictograms
 from utils.groq_llm   import extract_fields_with_groq
 
 app = Flask(__name__)
-# Allow requests from the Vite dev server and any localhost origin
-CORS(app, origins=["http://localhost:5173", "http://localhost:3000", "http://localhost:5050"])
+CORS(app, origins=[
+    "http://localhost:5173",
+    "http://localhost:3000",
+    "https://sarn-technologies-21d6e.web.app",
+    "https://sarn-technologies-21d6e.firebaseapp.com",
+])
 app.config["MAX_CONTENT_LENGTH"] = 50 * 1024 * 1024  # 50 MB max upload
 
 
@@ -84,5 +88,6 @@ def scan():
 
 
 if __name__ == "__main__":
-    print("SDS Scanner running at http://localhost:5050")
-    app.run(debug=True, port=5050)
+    port = int(os.environ.get("PORT", 5050))
+    print(f"SDS Scanner running at http://localhost:{port}")
+    app.run(debug=False, host="0.0.0.0", port=port)

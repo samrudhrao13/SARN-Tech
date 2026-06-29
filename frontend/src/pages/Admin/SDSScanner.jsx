@@ -1,6 +1,6 @@
 import React, { useState, useRef } from "react";
 
-const SDS_SCANNER_URL = "http://localhost:5050";
+const SDS_SCANNER_URL = import.meta.env.VITE_SCANNER_URL || "http://localhost:5050";
 
 const GHS_ALL = [
   "GHS01 — Exploding Bomb",
