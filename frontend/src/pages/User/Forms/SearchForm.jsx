@@ -61,6 +61,7 @@ const SEARCH_COMMENTS_2 = [
 
 export default function SearchForm({ sheet, refId, userId, searchData, onDone }) {
   const [loading, setLoading]               = useState(false);
+  const [showNPInfo, setShowNPInfo]         = useState(false);
   const [notPublishable, setNotPublishable]  = useState(searchData?.notPublishable || false);
   const [comments2, setComments2]            = useState(searchData?.comments2 || "");
   const [status, setStatus]                  = useState(searchData?.status || "");
@@ -359,6 +360,37 @@ export default function SearchForm({ sheet, refId, userId, searchData, onDone })
             />
             <span style={{ fontWeight: 700, fontSize: 14, color: notPublishable ? "#dc2626" : "#0f172a" }}>
               Not Publishable
+            </span>
+            <span style={{ position: "relative", display: "inline-flex", alignItems: "center" }}>
+              <button
+                type="button"
+                onMouseEnter={() => setShowNPInfo(true)}
+                onMouseLeave={() => setShowNPInfo(false)}
+                onClick={e => { e.preventDefault(); setShowNPInfo(v => !v); }}
+                style={{
+                  width: 18, height: 18, borderRadius: "50%",
+                  border: "1.5px solid #64748b", background: "#fff",
+                  color: "#64748b", fontSize: 11, fontWeight: 800,
+                  cursor: "pointer", lineHeight: 1, padding: 0,
+                  display: "inline-flex", alignItems: "center", justifyContent: "center",
+                  flexShrink: 0,
+                }}
+              >
+                i
+              </button>
+              {showNPInfo && (
+                <div style={{
+                  position: "absolute", left: 24, top: "50%", transform: "translateY(-50%)",
+                  background: "#1e293b", color: "#f1f5f9",
+                  fontSize: 12, fontWeight: 500, lineHeight: 1.5,
+                  padding: "8px 12px", borderRadius: 8,
+                  width: 240, zIndex: 50,
+                  boxShadow: "0 4px 16px rgba(0,0,0,0.2)",
+                  pointerEvents: "none",
+                }}>
+                  <span style={{ color: "#fbbf24", fontWeight: 700 }}>⚠ Only check this</span> when the search result is <strong style={{ color: "#93c5fd" }}>No file found</strong>. Do not enable if a file was located or is being superseded.
+                </div>
+              )}
             </span>
             {goesToSupersede && (
               <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 500 }}>
