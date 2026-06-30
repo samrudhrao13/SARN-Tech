@@ -2369,6 +2369,7 @@ app.get("/user/completed-sds-tasks", async (req, res) => {
     let assignedCount = 0, pendingCount = 0, completedCount = 0;
     const userSheets = new Set();
     const STAGES = ["search", "supersede", "transcription"];
+    const duplicateDocIds = new Set();
 
     const sheetsSnap = await db.collection("sds_sheets").get();
 
@@ -2379,6 +2380,7 @@ app.get("/user/completed-sds-tasks", async (req, res) => {
       refsSnap.forEach(doc => {
         const d = doc.data();
         let userInRef = false;
+        let userCompletedHere = false;
 
         STAGES.forEach(stageName => {
           const s = d[stageName] || {};
@@ -2399,6 +2401,7 @@ app.get("/user/completed-sds-tasks", async (req, res) => {
 
           // One table row per completed stage (sheet-filtered)
           if (isCompleted) {
+            userCompletedHere = true;
             if (sheetParam && sheet !== sheetParam) return;
             tasks.push({
               referenceId: doc.id,
@@ -2412,6 +2415,9 @@ app.get("/user/completed-sds-tasks", async (req, res) => {
         });
 
         if (userInRef) userSheets.add(sheet);
+        if (userCompletedHere && d.duplicate && (!sheetParam || sheet === sheetParam)) {
+          duplicateDocIds.add(`${sheet}_${doc.id}`);
+        }
       });
     }
 
@@ -2425,7 +2431,7 @@ app.get("/user/completed-sds-tasks", async (req, res) => {
       ok: true,
       tasks,
       sheets: Array.from(userSheets).sort(),
-      summary: { assignedCount, pendingCount, completedCount },
+      summary: { assignedCount, pendingCount, completedCount, duplicateCount: duplicateDocIds.size },
     });
   } catch (err) {
     console.error(err);
@@ -3454,7 +3460,7 @@ app.get("/user/completed-dq-tasks", async (req, res) => {
     if (!userId) return res.json({ ok: false, error: "UserId required" });
 
     const tasks = [];
-    let assignedCount = 0, pendingCount = 0, completedCount = 0;
+    let assignedCount = 0, pendingCount = 0, completedCount = 0, duplicateCount = 0;
     const userSheets = new Set();
 
     const sheetsSnap = await db.collection("dq_sheets").get();
@@ -3473,8 +3479,12 @@ app.get("/user/completed-dq-tasks", async (req, res) => {
         // Summary counts: sheet-filtered
         if (!sheetParam || sheetId === sheetParam) {
           assignedCount++;
-          if (isCompleted) completedCount++;
-          else pendingCount++;
+          if (isCompleted) {
+            completedCount++;
+            if (d.duplicate) duplicateCount++;
+          } else {
+            pendingCount++;
+          }
         }
 
         // Table rows: completed only, sheet-filtered
@@ -3488,6 +3498,7 @@ app.get("/user/completed-dq-tasks", async (req, res) => {
           assignedTo: d.assignedTo,
           completedAt: d.updatedAt || null,
           dateVerified: d.dateVerified || "",
+          duplicate: d.duplicate || false,
         });
       });
     }
@@ -3498,7 +3509,7 @@ app.get("/user/completed-dq-tasks", async (req, res) => {
       tasks,
       total: tasks.length,
       sheets: Array.from(userSheets).sort(),
-      summary: { assignedCount, pendingCount, completedCount },
+      summary: { assignedCount, pendingCount, completedCount, duplicateCount },
     });
   } catch (err) {
     console.error("COMPLETED DQ TASKS ERROR:", err);
@@ -4699,6 +4710,7 @@ app.get("/user/batch/completed", async (req, res) => {
     let assignedCount = 0;
     let pendingCount = 0;
     let completedCount = 0;
+    let duplicateCount = 0;
     const userSheets = new Set();
 
     const today = new Date().toISOString().slice(0, 10);
@@ -4723,7 +4735,10 @@ app.get("/user/batch/completed", async (req, res) => {
         if (!sheetFilter || sheetDoc.id === sheetFilter) {
           assignedCount++;
           if (!isCompleted) pendingCount++;
-          else completedCount++;
+          else {
+            completedCount++;
+            if (d.duplicate) duplicateCount++;
+          }
         }
 
         // Table rows: sheet-filtered + date-filtered, completed only
@@ -4762,6 +4777,7 @@ app.get("/user/batch/completed", async (req, res) => {
         completedCount,
         completedToday,
         completedMonth,
+        duplicateCount,
         // backward compat
         pendingAssigned: pendingCount,
         totalCompleted: completedCount,

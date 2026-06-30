@@ -12,7 +12,7 @@ export default function CompletedDQWork() {
   const [sheets, setSheets]           = useState([]);
   const [sheetFilter, setSheetFilter] = useState("");
   const [search, setSearch]           = useState("");
-  const [summary, setSummary]         = useState({ assignedCount: 0, pendingCount: 0, completedCount: 0 });
+  const [summary, setSummary]         = useState({ assignedCount: 0, pendingCount: 0, completedCount: 0, duplicateCount: 0 });
 
   useEffect(() => {
     if (!userId) { setLoading(false); return; }
@@ -55,6 +55,7 @@ export default function CompletedDQWork() {
         <StatCard label="Assigned"  value={summary.assignedCount  ?? 0} bg="#fff7ed" accent="#ea580c" />
         <StatCard label="Pending"   value={summary.pendingCount   ?? 0} bg="#fef3c7" accent="#d97706" />
         <StatCard label="Completed" value={summary.completedCount ?? 0} bg="#dcfce7" accent="#16a34a" />
+        <StatCard label="Duplicates" value={summary.duplicateCount ?? 0} bg="#fdf4ff" accent="#9333ea" />
       </div>
 
       {/* ── Filters ── */}

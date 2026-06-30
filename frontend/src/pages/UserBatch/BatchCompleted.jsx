@@ -9,6 +9,7 @@ export default function BatchCompleted() {
     pendingCount: 0,
     completedCount: 0,
     completedToday: 0,
+    duplicateCount: 0,
   });
   const [sheets, setSheets] = useState([]);
   const [sheetFilter, setSheetFilter] = useState("");
@@ -82,6 +83,7 @@ export default function BatchCompleted() {
         <StatCard label="Pending" value={summary.pendingCount ?? 0} bg="#fef3c7" accent="#d97706" />
         <StatCard label="Completed" value={summary.completedCount ?? 0} bg="#dcfce7" accent="#16a34a" />
         <StatCard label="Completed Today" value={summary.completedToday ?? 0} bg="#dbeafe" accent="#2563eb" />
+        <StatCard label="Duplicates" value={summary.duplicateCount ?? 0} bg="#fdf4ff" accent="#9333ea" />
       </div>
 
       {/* ── Filters ── */}
