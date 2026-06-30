@@ -100,16 +100,6 @@ export default function SupersedeForm({ sheet, refId, userId, onDone }) {
           </div>
         </div>
 
-        {/* ── Section: PDF Upload ── */}
-        <SectionLabel icon="📎" title="PDF Upload" />
-        <div style={{ ...sectionBox, display: "flex", alignItems: "center" }}>
-          <label style={uploadLabel}>
-            <span style={{ fontSize: 20 }}>📄</span>
-            <span>Click to upload PDF (optional)</span>
-            <input type="file" name="pdf" accept="application/pdf" style={{ display: "none" }} />
-          </label>
-        </div>
-
         {/* ── Submit ── */}
         <div style={{ marginTop: 20 }}>
           <button type="submit" disabled={loading} style={submitBtn(loading)}>
@@ -147,5 +137,4 @@ const grid2      = { display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap
 const field      = { display: "flex", flexDirection: "column" };
 const inp        = { padding: "8px 10px", borderRadius: 8, border: "2px solid #94a3b8", background: "#fff", fontSize: 13, color: "#0f172a", width: "100%", boxSizing: "border-box", outline: "none" };
 const ta         = { padding: "8px 10px", borderRadius: 8, border: "2px solid #94a3b8", background: "#fff", fontSize: 13, color: "#0f172a", width: "100%", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" };
-const uploadLabel = { display: "flex", alignItems: "center", gap: 10, padding: "10px 20px", borderRadius: 8, border: "2px dashed #cbd5e1", background: "#f8fafc", cursor: "pointer", flex: 1, color: "#475569", fontSize: 13, fontWeight: 600 };
 const submitBtn  = (disabled) => ({ padding: "12px 32px", borderRadius: 10, border: "none", background: disabled ? "#94a3b8" : "#2563eb", color: "#fff", fontWeight: 800, fontSize: 15, cursor: disabled ? "not-allowed" : "pointer", boxShadow: disabled ? "none" : "0 4px 14px rgba(37,99,235,0.35)" });

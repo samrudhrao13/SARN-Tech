@@ -160,8 +160,6 @@ export default function SearchForm({ sheet, refId, userId, searchData, onDone })
     const fd = new FormData();
     Object.entries({ sheet, refId, userId, language, languageOther,
                      notPublishable: String(notPublishable), ...fields }).forEach(([k,v]) => fd.append(k, v));
-    const pdfInput = document.querySelector('input[name="pdf"]');
-    if (pdfInput?.files?.[0]) fd.append("pdf", pdfInput.files[0]);
     try {
       setLoading(true);
       const res = await api.post("/sds/workflow/search", fd);
@@ -384,20 +382,6 @@ export default function SearchForm({ sheet, refId, userId, searchData, onDone })
               />
             </div>
           )}
-        </div>
-
-        {/* ── Section: PDF Upload ── */}
-        <SectionLabel icon="📎" title="PDF Upload" />
-        <div style={{ ...sectionBox, display: "flex", alignItems: "center", gap: 16 }}>
-          <label style={{
-            display: "flex", alignItems: "center", gap: 10, padding: "10px 20px",
-            borderRadius: 8, border: "2px dashed #cbd5e1", background: "#f8fafc",
-            cursor: "pointer", flex: 1, color: "#475569", fontSize: 13, fontWeight: 600,
-          }}>
-            <span style={{ fontSize: 20 }}>📄</span>
-            <span>Click to upload PDF (optional)</span>
-            <input type="file" name="pdf" accept="application/pdf" style={{ display: "none" }} />
-          </label>
         </div>
 
         {/* ── Submit ── */}
