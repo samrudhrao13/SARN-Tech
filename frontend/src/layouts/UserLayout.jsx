@@ -39,7 +39,7 @@ export default function UserLayout({ children }) {
   return (
     <div style={{ display: "flex", minHeight: "100vh" }}>
       <UserSidebar />
-      <div style={{ width: "220px", minWidth: "220px", flexShrink: 0 }} />
+      <div style={{ width: "230px", minWidth: "230px", flexShrink: 0 }} />
       <div style={{ flex: 1, minWidth: 0, padding: "20px 20px 20px 16px", minHeight: "100vh", background: "#f8fafc" }}>
         {children}
       </div>

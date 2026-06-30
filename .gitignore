@@ -91,3 +91,6 @@ google-cloud-sdk/
 # Executables
 *.exe
 *.bat
+
+# Windows artifacts
+nul

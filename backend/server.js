@@ -5,8 +5,9 @@ require("dotenv").config();
 // ================== IMPORTS ==================
 const express = require("express");
 const cors = require("cors");
+const rateLimit = require("express-rate-limit");
 const multer = require("multer");
-const XLSX = require("xlsx");
+const XLSX = require("@e965/xlsx");
 const { google } = require("googleapis");
 const jwt = require("jsonwebtoken");
 const bcrypt = require("bcryptjs");
@@ -60,10 +61,46 @@ async function createGoogleMeetLink(title = "SARN Call", startISO, endISO, descr
 
 // ================== EXPRESS ==================
 const app = express();
-app.use(cors());
+
+const ALLOWED_ORIGINS = [
+  "https://sarn-technologies-21d6e.web.app",
+  "https://sarn-technologies-21d6e.firebaseapp.com",
+  "http://localhost:5173",
+  "http://localhost:3000",
+];
+app.use(cors({
+  origin: (origin, cb) => {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) return cb(null, true);
+    cb(new Error("Not allowed by CORS"));
+  },
+  credentials: true,
+}));
+
 app.use(express.json({ limit: "50mb" }));
 
-const upload = multer({ storage: multer.memoryStorage() });
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 20,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { ok: false, error: "Too many attempts. Please try again later." },
+});
+
+const upload = multer({
+  storage: multer.memoryStorage(),
+  fileFilter: (_req, file, cb) => {
+    const allowed = [
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      "application/vnd.ms-excel",
+      "application/pdf",
+      "application/octet-stream",
+    ];
+    const ext = (file.originalname || "").toLowerCase();
+    const validExt = ext.endsWith(".xlsx") || ext.endsWith(".xls") || ext.endsWith(".pdf");
+    if (allowed.includes(file.mimetype) || validExt) return cb(null, true);
+    cb(new Error("Only Excel (.xlsx, .xls) and PDF files are allowed"));
+  },
+});
 
 const verifyToken = (req, res, next) => {
   const authHeader = req.headers["authorization"];
@@ -95,7 +132,7 @@ app.get("/test-firestore", async (req, res) => {
     console.error("TEST FIRESTORE ERROR:", err);
     res.status(500).json({
       ok: false,
-      error: err.message,
+      error: "Something went wrong",
     });
   }
 });
@@ -141,7 +178,7 @@ app.get("/", (req, res) => {
 //  AUTH: LOGIN (WITH ATTENDANCE)
 // ============================================================================
 
-app.post("/auth/login", async (req, res) => {
+app.post("/auth/login", authLimiter, async (req, res) => {
   try {
     const { userId, password } = req.body;
 
@@ -254,7 +291,7 @@ app.post("/auth/create-user", async (req, res) => {
 // ============================================================================
 //  AUTH: RESET PASSWORD
 // ============================================================================
-app.post("/auth/reset", async (req, res) => {
+app.post("/auth/reset", authLimiter, async (req, res) => {
   try {
     const { userId, newPassword } = req.body;
 
@@ -898,7 +935,7 @@ function formatDate(val) {
     res.json({ ok: true, count });
   } catch (err) {
     console.error("UPLOAD ERROR:", err);
-    res.status(500).json({ ok: false, error: err.message });
+    console.error(err); res.status(500).json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -1238,7 +1275,7 @@ app.get("/admin/workflow/productivity", async (req, res) => {
 
     res.status(500).json({
       ok: false,
-      error: err.message,
+      error: "Something went wrong",
     });
   }
 });
@@ -1713,12 +1750,22 @@ app.get("/admin/sds/database/export", async (req, res) => {
       .collection("references")
       .get();
 
+    const tsToDate = (ts) => {
+      if (!ts) return "";
+      if (ts.toDate) return ts.toDate().toISOString().slice(0, 10);
+      if (ts._seconds) return new Date(ts._seconds * 1000).toISOString().slice(0, 10);
+      return "";
+    };
+
     const rows = snap.docs.map(doc => {
       const x = doc.data();
 
       return {
         /* ================= BASIC ================= */
         ReferenceID: doc.id,
+        WorkflowStatus: x.workflowStatus || "",
+        CurrentStage: x.currentStage || "",
+        AssignedTo: x.assignedTo || "",
 
         /* ================= COMMON ================= */
         BusinessEntity: x.common?.businessEntity || "",
@@ -1729,6 +1776,8 @@ app.get("/admin/sds/database/export", async (req, res) => {
         VerificationDate: x.common?.verificationDate || "",
 
         /* ================= SEARCH ================= */
+        Search_CompletedBy: x.search?.completedBy || x.search?.user || "",
+        Search_CompletedAt: tsToDate(x.search?.completedAt),
         Search_Websearch1: x.search?.websearch1 || "",
         Search_Websearch2: x.search?.websearch2 || "",
         Search_Comments1: x.search?.comments1 || "",
@@ -1741,6 +1790,8 @@ app.get("/admin/sds/database/export", async (req, res) => {
         Search_NotPublishableReason: x.search?.notPublishableRemarks || "",
 
         /* ================= SUPERSEDE ================= */
+        Supersede_CompletedBy: x.supersede?.user || "",
+        Supersede_CompletedAt: tsToDate(x.supersede?.completedAt),
         Supersede_NewRepositoryNumber: x.supersede?.newRepositoryNumber || "",
         Supersede_Date: x.supersede?.supersedeDate || "",
         Supersede_VerifiedDate: x.supersede?.verifiedDate || "",
@@ -1749,10 +1800,17 @@ app.get("/admin/sds/database/export", async (req, res) => {
         Supersede_Remarks: x.supersede?.remarks || "",
 
         /* ================= TRANSCRIPTION ================= */
+        Transcription_CompletedBy: x.transcription?.completedBy || x.transcription?.user || "",
+        Transcription_CompletedAt: tsToDate(x.transcription?.completedAt),
         Transcription_VerifiedDate: x.transcription?.verifiedDate || "",
         Transcription_Comments1: x.transcription?.comments1 || "",
         Transcription_Comments2: x.transcription?.comments2 || "",
         Transcription_Remarks: x.transcription?.remarks || "",
+
+        /* ================= BILLING ================= */
+        Billing_CompletedBy: x.billing?.completedBy || "",
+        Billing_CompletedAt: tsToDate(x.billing?.completedAt),
+        Billing_Status: x.billing?.status || "",
       };
     });
 
@@ -2753,7 +2811,7 @@ app.post("/dq/upload", upload.single("file"), async (req, res) => {
     return res.json({ ok: true, added });
   } catch (err) {
     console.error("🔥 DQ UPLOAD CRASH:", err);
-    return errJson(res, err.message || "Upload failed");
+    console.error(err); return errJson(res, "Upload failed");
   }
 });
 
@@ -2802,7 +2860,7 @@ app.post("/dq/assign", async (req, res) => {
     return res.json({ ok: true });
   } catch (err) {
     console.error("DQ ASSIGN ERROR:", err);
-    return res.json({ ok: false, error: err.message });
+    console.error(err); return res.json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -2902,7 +2960,7 @@ app.get("/admin/dq/workflow", async (req, res) => {
     });
   } catch (err) {
     console.error("ADMIN DQ WORKFLOW ERROR:", err);
-    res.json({ ok: false, error: err.message });
+    console.error(err); res.json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -2946,7 +3004,7 @@ app.post("/admin/dq/force-complete", async (req, res) => {
     return res.json({ ok: true });
   } catch (err) {
     console.error("DQ FORCE COMPLETE ERROR:", err);
-    return res.json({ ok: false, error: err.message });
+    console.error(err); return res.json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -3028,7 +3086,7 @@ app.get("/dq/list", async (req, res) => {
     });
   } catch (err) {
     console.error("DQ LIST ERROR:", err);
-    res.json({ ok: false, error: err.message });
+    console.error(err); res.json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -3120,7 +3178,7 @@ app.get("/dq/export", async (req, res) => {
 
   } catch (err) {
     console.error("DQ EXPORT ERROR:", err);
-    return res.status(500).json({ ok: false, error: err.message });
+    console.error(err); return res.status(500).json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -3171,7 +3229,7 @@ app.get("/dq/billing", async (req, res) => {
     console.error("DQ BILLING ERROR:", err);
     return res.json({
       ok: false,
-      error: err.message,
+      error: "Something went wrong",
     });
   }
 });
@@ -3222,7 +3280,7 @@ app.get("/dq/references", async (req, res) => {
     res.json({ ok: true, references });
   } catch (err) {
     console.error("DQ REFERENCES ERROR:", err);
-    res.json({ ok: false, error: err.message });
+    console.error(err); res.json({ ok: false, error: "Something went wrong" });
   }
 });
 // =====================================================
@@ -3279,7 +3337,7 @@ app.get("/user/dq/workflow", async (req, res) => {
     });
   } catch (err) {
     console.error("USER DQ WORKFLOW ERROR:", err);
-    res.json({ ok: false, error: err.message });
+    console.error(err); res.json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -3329,7 +3387,7 @@ app.post("/dq/work", async (req, res) => {
     res.json({ ok: true });
   } catch (err) {
     console.error("DQ WORK SAVE ERROR:", err);
-    res.json({ ok: false, error: err.message });
+    console.error(err); res.json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -3444,7 +3502,7 @@ app.get("/user/completed-dq-tasks", async (req, res) => {
     });
   } catch (err) {
     console.error("COMPLETED DQ TASKS ERROR:", err);
-    return res.status(500).json({ ok: false, error: err.message });
+    console.error(err); return res.status(500).json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -3487,7 +3545,7 @@ app.get("/dq/load-repos", async (req, res) => {
     res.json({ ok: true, repos });
   } catch (err) {
     console.error("DQ LOAD REPOS ERROR:", err);
-    res.json({ ok: false, error: err.message });
+    console.error(err); res.json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -3595,7 +3653,7 @@ app.get("/admin/dq/view", async (req, res) => {
     });
   } catch (err) {
     console.error("ADMIN DQ VIEW ERROR:", err);
-    res.json({ ok: false, error: err.message });
+    console.error(err); res.json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -3961,7 +4019,7 @@ if (ops >= 400) {
     console.error(err);
     res.status(500).json({
       ok: false,
-      error: err.message,
+      error: "Something went wrong",
     });
   }
 });
@@ -4361,11 +4419,17 @@ app.get("/admin/batch/export", async (req, res) => {
       const d = doc.data();
 
       return {
+        Repository:
+          d.common?.newRepository,
+
         ChemicalName:
           d.common?.chemicalName,
 
         ManufacturerName:
           d.common?.manufacturerName,
+
+        Language:
+          d.common?.language,
 
         RevisionDate:
           d.common?.revisionDate,
@@ -4376,17 +4440,17 @@ app.get("/admin/batch/export", async (req, res) => {
         SiteSDS:
           d.common?.siteSdsNumber,
 
-        Language:
-          d.common?.language,
-
-        Repository:
-          d.common?.newRepository,
-
         ProductCode:
           d.common?.productCode,
 
         PdfFile:
           d.common?.pdfFileName,
+
+        AssignedTo:
+          d.verification?.assignedTo || null,
+
+        VerifiedBy:
+          d.verification?.verifiedBy || null,
 
         DateVerified:
           d.verification?.dateVerified,
@@ -4400,11 +4464,17 @@ app.get("/admin/batch/export", async (req, res) => {
         Remarks2:
           d.verification?.remarks2,
 
-        Status:
+        VerificationStatus:
           d.verification?.status,
 
         BillingStatus:
           d.billing?.status,
+
+        BillingCompletedBy:
+          d.billing?.completedBy || null,
+
+        WorkflowStatus:
+          d.workflowStatus || null,
       };
     });
 
@@ -5030,7 +5100,7 @@ app.get("/admin/report/pdf", async (req, res) => {
     doc.end();
   } catch (err) {
     console.error("PDF REPORT ERROR:", err.message);
-    res.status(500).json({ ok: false, error: err.message });
+    console.error(err); res.status(500).json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -5275,7 +5345,7 @@ app.get("/admin/report/user-detail", async (req, res) => {
     doc.end();
   } catch (err) {
     console.error("USER DETAIL PDF ERROR:", err);
-    res.status(500).json({ ok: false, error: err.message });
+    console.error(err); res.status(500).json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -5297,15 +5367,18 @@ async function getDriveClient() {
 
 app.get("/admin/drive/search", async (req, res) => {
   try {
-    const mat = String(req.query.mat || "").trim().replace(/['"\\]/g, "");
+    const mat = String(req.query.mat || "").trim().replace(/[^a-zA-Z0-9\-_. ]/g, "");
     if (!mat) return res.status(400).json({ ok: false, error: "mat parameter required" });
 
     const drive = await getDriveClient();
     const response = await drive.files.list({
       q: `name contains '${mat}' and trashed = false`,
       fields: "files(id, name, mimeType, size, modifiedTime, webViewLink)",
-      pageSize: 20,
-      orderBy: "name",
+      pageSize: 50,
+      orderBy: "modifiedTime desc",
+      includeItemsFromAllDrives: true,
+      supportsAllDrives: true,
+      corpora: "allDrives",
     });
 
     const files = (response.data.files || []).map(f => ({
@@ -5320,7 +5393,7 @@ app.get("/admin/drive/search", async (req, res) => {
   } catch (err) {
     console.error("DRIVE SEARCH ERROR:", err.message);
     console.error("DRIVE SEARCH DETAIL:", JSON.stringify(err.response?.data || {}));
-    res.status(500).json({ ok: false, error: err.message });
+    console.error(err); res.status(500).json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -5343,7 +5416,7 @@ app.get("/admin/drive/download/:fileId", async (req, res) => {
     fileRes.data.pipe(res);
   } catch (err) {
     console.error("DRIVE DOWNLOAD ERROR:", err.message);
-    res.status(500).json({ ok: false, error: err.message });
+    console.error(err); res.status(500).json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -5467,7 +5540,7 @@ app.get("/admin/firestore/search", async (req, res) => {
     });
   } catch (err) {
     console.error("FIRESTORE SEARCH ERROR:", err.message);
-    res.status(500).json({ ok: false, error: err.message });
+    console.error(err); res.status(500).json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -5524,11 +5597,12 @@ app.get("/admin/report/superadmin-pdf", async (req, res) => {
         const suffix  = (!rawLang || rawLang === "english") ? "E" : "ML";
         for (const stage of SDS_STAGES) {
           const s = d[stage];
-          if (!s || !s.assignedTo) continue;
+          const actor = s?.assignedTo || s?.completedBy || s?.user;
+          if (!s || !actor) continue;
           const completedAt = s.completedAt?.toDate ? s.completedAt.toDate() : null;
           if (!completedAt) continue;
           if (fromDate && (completedAt < fromDate || completedAt > toDate)) continue;
-          getUbs(s.assignedTo, sheetDoc.id)[`${stage}${suffix}`]++;
+          getUbs(actor, sheetDoc.id)[`${stage}${suffix}`]++;
         }
       }
     }
@@ -5772,7 +5846,7 @@ app.get("/admin/report/superadmin-pdf", async (req, res) => {
     doc.end();
   } catch (err) {
     console.error("SUPER ADMIN PDF ERROR:", err);
-    res.status(500).json({ ok: false, error: err.message });
+    console.error(err); res.status(500).json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -5878,7 +5952,7 @@ Rules:
     res.json({ ok: true, translatedLines, usage: data.usage || null });
   } catch (err) {
     console.error("SECTION TRANSLATE ERROR:", err.message);
-    res.status(500).json({ ok: false, error: err.message });
+    console.error(err); res.status(500).json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -5915,7 +5989,7 @@ app.post("/admin/pdf/translate", async (req, res) => {
     res.json({ ok: true, fields: translated, usage: data.usage || null });
   } catch (err) {
     console.error("TRANSLATE ERROR:", err.message);
-    res.status(500).json({ ok: false, error: err.message });
+    console.error(err); res.status(500).json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -6086,7 +6160,7 @@ ${JSON.stringify(context, null, 2)}`;
     return res.json({ ok: false, error: "Send a message or upload a PDF" });
   } catch (err) {
     console.error("CHAT ERROR:", err.message);
-    res.json({ ok: false, error: err.message || "Something went wrong. Please try again." });
+    console.error(err); res.json({ ok: false, error: "Something went wrong. Please try again." });
   }
 });
 
@@ -6182,7 +6256,7 @@ ${snippet}`,
     return res.json({ ok: true, fields, textChars: rawText.length, usage: groqData.usage || null });
 
   } catch (err) {
-    return res.json({ ok: false, error: err.message });
+    console.error(err); return res.json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -6231,9 +6305,9 @@ app.get("/admin/sds/reports-data", async (req, res) => {
 
         for (const stage of STAGES) {
           const sd = d[stage];
-          if (!sd || !sd.assignedTo) continue;
+          const uid = sd?.assignedTo || sd?.completedBy || sd?.user;
+          if (!sd || !uid) continue;
 
-          const uid = sd.assignedTo;
           const completedAt = sd.completedAt?.toDate ? sd.completedAt.toDate() : null;
 
           // completedAt respects the period filter; totalAssigned is always the full count
@@ -6292,7 +6366,7 @@ app.get("/admin/sds/reports-data", async (req, res) => {
     res.json({ ok: true, period, totals, rows, users });
   } catch (err) {
     console.error("SDS REPORTS ERROR:", err);
-    res.status(500).json({ ok: false, error: err.message });
+    console.error(err); res.status(500).json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -6385,7 +6459,7 @@ app.get("/admin/dq/reports-data", async (req, res) => {
     res.json({ ok: true, period, totals, rows, users });
   } catch (err) {
     console.error("DQ REPORTS ERROR:", err);
-    res.status(500).json({ ok: false, error: err.message });
+    console.error(err); res.status(500).json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -6481,7 +6555,7 @@ app.get("/admin/batch/reports-data", async (req, res) => {
     res.json({ ok: true, period, totals, rows, users });
   } catch (err) {
     console.error("BATCH REPORTS ERROR:", err);
-    res.status(500).json({ ok: false, error: err.message });
+    console.error(err); res.status(500).json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -6499,7 +6573,7 @@ app.get("/sheets/due-dates", async (req, res) => {
     batchSnap.docs.forEach(d => { const dd = d.data().dueDate; if (dd) batch[d.id] = dd; });
     res.json({ ok: true, sds, dq, batch });
   } catch (err) {
-    res.json({ ok: false, error: err.message });
+    console.error(err); res.json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -6617,7 +6691,7 @@ app.get("/admin/deadline-alerts", async (req, res) => {
     res.json({ ok: true, alerts });
   } catch (err) {
     console.error("DEADLINE ALERTS ERROR:", err);
-    res.json({ ok: false, error: err.message });
+    console.error(err); res.json({ ok: false, error: "Something went wrong" });
   }
 });
 
@@ -6649,7 +6723,7 @@ app.get("/admin/notification-settings", async (req, res) => {
       lastChecked: d.lastChecked || null,
       lastSent: d.lastSent || null,
     }});
-  } catch (err) { errJson(res, err.message); }
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
 });
 
 // POST /admin/notification-settings
@@ -6677,7 +6751,7 @@ app.post("/admin/notification-settings", async (req, res) => {
     };
     await ref.set(update);
     res.json({ ok: true });
-  } catch (err) { errJson(res, err.message); }
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
 });
 
 // POST /admin/reset-notification-map
@@ -6685,7 +6759,7 @@ app.post("/admin/reset-notification-map", async (req, res) => {
   try {
     await db.collection("notification_settings").doc("config").update({ notifiedMap: {} });
     res.json({ ok: true });
-  } catch (err) { errJson(res, err.message); }
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
 });
 
 // Helper: aggregate all sheet progress
@@ -6968,7 +7042,7 @@ app.post("/admin/trigger-notifications", async (req, res) => {
     res.json({ ok: true, sent: true, count: toNotify.length, recipients: cfg.recipientEmails.length });
   } catch (err) {
     console.error("TRIGGER NOTIFICATIONS ERROR:", err);
-    errJson(res, err.message);
+    console.error(err); errJson(res, "Something went wrong");
   }
 });
 
@@ -7045,7 +7119,7 @@ app.post("/user/status", async (req, res) => {
     if (!VALID_STATUSES.includes(status)) return res.json({ ok: false, error: "Invalid status" });
     await db.collection("users").doc(userId).update({ status, statusAt: new Date().toISOString() });
     res.json({ ok: true });
-  } catch (err) { errJson(res, err.message); }
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
 });
 
 // GET /users/statuses  → { userId: { status, name } }
@@ -7058,7 +7132,7 @@ app.get("/users/statuses", async (req, res) => {
       statuses[d.id] = { status: data.status || "available", name: data.name || d.id };
     });
     res.json({ ok: true, statuses });
-  } catch (err) { errJson(res, err.message); }
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -7082,7 +7156,7 @@ app.post("/calls/create", async (req, res) => {
     });
     await db.collection("users").doc(userId).update({ status: "in-call", statusAt: new Date().toISOString() });
     res.json({ ok: true, roomId, meetLink });
-  } catch (err) { errJson(res, err.message); }
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
 });
 
 // GET /calls/active
@@ -7090,7 +7164,7 @@ app.get("/calls/active", async (req, res) => {
   try {
     const snap = await db.collection("call_rooms").where("active", "==", true).get();
     res.json({ ok: true, rooms: snap.docs.map(d => d.data()) });
-  } catch (err) { errJson(res, err.message); }
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
 });
 
 // POST /calls/join  { roomId, userId, userName }
@@ -7107,7 +7181,7 @@ app.post("/calls/join", async (req, res) => {
     }
     await db.collection("users").doc(userId).update({ status: "in-call", statusAt: new Date().toISOString() });
     res.json({ ok: true });
-  } catch (err) { errJson(res, err.message); }
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
 });
 
 // POST /calls/leave  { roomId, userId }
@@ -7121,7 +7195,7 @@ app.post("/calls/leave", async (req, res) => {
     await ref.update({ participants, active: participants.length > 0 });
     await db.collection("users").doc(userId).update({ status: "available", statusAt: new Date().toISOString() });
     res.json({ ok: true });
-  } catch (err) { errJson(res, err.message); }
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
 });
 
 // POST /calls/direct  { callerId, callerName, calleeId }
@@ -7142,7 +7216,7 @@ app.post("/calls/direct", async (req, res) => {
     });
     await db.collection("users").doc(callerId).update({ status: "in-call", statusAt: new Date().toISOString() });
     res.json({ ok: true, roomId, meetLink });
-  } catch (err) { errJson(res, err.message); }
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
 });
 
 // GET /calls/users  — full user directory with live status
@@ -7154,7 +7228,7 @@ app.get("/calls/users", async (req, res) => {
       return { userId: d.id, name: data.name || d.id, email: data.email || "", role: data.role || "user", status: data.status || "available" };
     });
     res.json({ ok: true, users });
-  } catch (err) { errJson(res, err.message); }
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
 });
 
 // GET /calls/room/:roomId  — fetch room details including meetLink
@@ -7163,7 +7237,7 @@ app.get("/calls/room/:roomId", async (req, res) => {
     const doc = await db.collection("call_rooms").doc(req.params.roomId).get();
     if (!doc.exists) return res.json({ ok: false, error: "Room not found" });
     res.json({ ok: true, room: doc.data() });
-  } catch (err) { errJson(res, err.message); }
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
 });
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -7228,7 +7302,7 @@ app.post("/meetings/schedule", async (req, res) => {
     } catch (emailErr) { console.warn("Meeting invite email failed:", emailErr.message); }
 
     res.json({ ok: true, meetingId, emailsSent });
-  } catch (err) { errJson(res, err.message); }
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
 });
 
 // GET /meetings/mine?userId=
@@ -7240,7 +7314,177 @@ app.get("/meetings/mine", async (req, res) => {
     const meetings = snap.docs.map(d => d.data());
     meetings.sort((a, b) => new Date(a.scheduledAt) - new Date(b.scheduledAt));
     res.json({ ok: true, meetings });
-  } catch (err) { errJson(res, err.message); }
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
+});
+
+// ============================================================================
+//  DIRECT MESSAGES  (1-on-1, 48-hour TTL)
+// ============================================================================
+
+function dmConvId(a, b) { return [a, b].sort().join("___"); }
+
+// GET /chat/dm/users  — all users + their status (caller excluded)
+app.get("/chat/dm/users", verifyToken, async (req, res) => {
+  try {
+    const me = req.user.userId;
+    const snap = await db.collection("users").get();
+    const users = snap.docs
+      .filter(d => d.id !== me)
+      .map(d => {
+        const data = d.data();
+        return { userId: d.id, name: data.name || d.id, role: data.role || "user", status: data.status || "offline" };
+      })
+      .sort((a, b) => {
+        const order = { available:0, "in-call":1, presenting:2, away:3, busy:4, dnd:5, offline:6 };
+        return (order[a.status] ?? 7) - (order[b.status] ?? 7) || a.name.localeCompare(b.name);
+      });
+    res.json({ ok: true, users });
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
+});
+
+// GET /chat/dm/:partnerId/messages
+app.get("/chat/dm/:partnerId/messages", verifyToken, async (req, res) => {
+  try {
+    const me = req.user.userId;
+    const convId = dmConvId(me, req.params.partnerId);
+    const snap = await db.collection("directChats").doc(convId).collection("messages")
+      .orderBy("timestamp").limitToLast(100).get();
+    const nowMs = Date.now();
+    const messages = snap.docs
+      .map(d => ({ id: d.id, ...d.data(), expiresAt: d.data().expiresAt?.toMillis?.() }))
+      .filter(m => !m.expiresAt || m.expiresAt > nowMs);
+    res.json({ ok: true, messages });
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
+});
+
+// POST /chat/dm/:partnerId/send
+app.post("/chat/dm/:partnerId/send", verifyToken, async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text || !String(text).trim()) return res.json({ ok: false, error: "Empty message" });
+    const me = req.user;
+    const partnerId = req.params.partnerId;
+    const convId = dmConvId(me.userId, partnerId);
+    const trimmed = String(text).trim().slice(0, 2000);
+    const expiresAt = admin.firestore.Timestamp.fromDate(new Date(Date.now() + 48 * 3600 * 1000));
+    const ts = Date.now();
+    await db.collection("directChats").doc(convId).collection("messages").add({
+      text: trimmed, senderId: me.userId, senderName: me.name || me.userId,
+      role: me.role || "user", timestamp: ts, expiresAt,
+    });
+    await db.collection("directChats").doc(convId).set({
+      participants: [me.userId, partnerId],
+      lastAt: ts,
+      lastMsg: trimmed.slice(0, 80),
+      lastSenderId: me.userId,
+      lastSenderName: me.name || me.userId,
+    }, { merge: true });
+    res.json({ ok: true });
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
+});
+
+// GET /chat/dm/conversations  — all DM conversations the caller is part of
+app.get("/chat/dm/conversations", verifyToken, async (req, res) => {
+  try {
+    const me = req.user.userId;
+    const snap = await db.collection("directChats")
+      .where("participants", "array-contains", me).get();
+    const convs = snap.docs.map(d => ({ id: d.id, ...d.data() }));
+    res.json({ ok: true, conversations: convs });
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
+});
+
+// DELETE /chat/dm/message/:convId/:msgId
+app.delete("/chat/dm/message/:convId/:msgId", verifyToken, async (req, res) => {
+  try {
+    const { convId, msgId } = req.params;
+    const me = req.user;
+    const ref = db.collection("directChats").doc(convId).collection("messages").doc(msgId);
+    const snap = await ref.get();
+    if (!snap.exists) return res.json({ ok: false, error: "Not found" });
+    const msg = snap.data();
+    const canDelete = msg.senderId === me.userId || ["admin","superadmin"].includes(me.role);
+    if (!canDelete) return res.status(403).json({ ok: false, error: "Not allowed" });
+    await ref.delete();
+    res.json({ ok: true });
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
+});
+
+// ============================================================================
+//  TEAM CHAT  (48-hour TTL auto-expire)
+// ============================================================================
+
+// POST /chat/send
+app.post("/chat/send", verifyToken, async (req, res) => {
+  try {
+    const { text } = req.body;
+    if (!text || !String(text).trim()) return res.json({ ok: false, error: "Empty message" });
+
+    const trimmed = String(text).trim().slice(0, 2000);
+    const user = req.user;
+    const now48h = new Date(Date.now() + 48 * 60 * 60 * 1000);
+
+    const ts = Date.now();
+    const docRef = await db.collection("teamChat").add({
+      text: trimmed,
+      senderId: user.userId,
+      senderName: user.name || user.userId,
+      role: user.role || "user",
+      timestamp: ts,
+      expiresAt: admin.firestore.Timestamp.fromDate(now48h),
+    });
+
+    // store last message metadata for conversation list
+    await db.collection("teamChatMeta").doc("meta").set({
+      lastAt: ts, lastMsg: trimmed.slice(0, 80),
+      lastSenderId: user.userId, lastSenderName: user.name || user.userId,
+    }, { merge: true });
+
+    res.json({ ok: true, id: docRef.id });
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
+});
+
+// GET /chat/team/meta  — last message metadata for conversation list
+app.get("/chat/team/meta", verifyToken, async (req, res) => {
+  try {
+    const snap = await db.collection("teamChatMeta").doc("meta").get();
+    res.json({ ok: true, meta: snap.exists ? snap.data() : null });
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
+});
+
+// GET /chat/messages  — returns up to 100 live messages (not yet expired)
+app.get("/chat/messages", verifyToken, async (req, res) => {
+  try {
+    const snap = await db.collection("teamChat")
+      .orderBy("timestamp")
+      .limitToLast(100)
+      .get();
+
+    const nowMs = Date.now();
+    const messages = snap.docs
+      .map(d => ({ id: d.id, ...d.data(), expiresAt: d.data().expiresAt?.toMillis?.() }))
+      .filter(m => !m.expiresAt || m.expiresAt > nowMs);
+
+    res.json({ ok: true, messages });
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
+});
+
+// DELETE /chat/message/:id  — sender or admin/superadmin can delete
+app.delete("/chat/message/:id", verifyToken, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const user = req.user;
+    const ref = db.collection("teamChat").doc(id);
+    const snap = await ref.get();
+    if (!snap.exists) return res.json({ ok: false, error: "Not found" });
+
+    const msg = snap.data();
+    const canDelete = msg.senderId === user.userId || ["admin", "superadmin"].includes(user.role);
+    if (!canDelete) return res.status(403).json({ ok: false, error: "Not allowed" });
+
+    await ref.delete();
+    res.json({ ok: true });
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
 });
 
 // ---------------- START ----------------

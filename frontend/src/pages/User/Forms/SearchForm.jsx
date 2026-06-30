@@ -60,19 +60,50 @@ const SEARCH_COMMENTS_2 = [
 ];
 
 export default function SearchForm({ sheet, refId, userId, searchData, onDone }) {
-  const [loading, setLoading]             = useState(false);
-  const [notPublishable, setNotPublishable] = useState(searchData?.notPublishable || false);
-  const [status, setStatus]               = useState(searchData?.status || "");
-  const [statusUpdated, setStatusUpdated] = useState(false);
-  const [language, setLanguage]           = useState(searchData?.language || "English");
-  const [languageOther, setLanguageOther] = useState(
+  const [loading, setLoading]               = useState(false);
+  const [notPublishable, setNotPublishable]  = useState(searchData?.notPublishable || false);
+  const [comments2, setComments2]            = useState(searchData?.comments2 || "");
+  const [status, setStatus]                  = useState(searchData?.status || "");
+  const [statusUpdated, setStatusUpdated]    = useState(false);
+  const [language, setLanguage]              = useState(searchData?.language || "English");
+  const [languageOther, setLanguageOther]    = useState(
     searchData?.language?.startsWith("Others: ")
       ? searchData.language.replace("Others: ", "")
       : ""
   );
+  const [showSubmitModal, setShowSubmitModal]     = useState(false);
+  const [showUncheckWarning, setShowUncheckWarning] = useState(false);
 
   const isMultilingual = language !== "English";
   const displayLanguage = language === "Others" && languageOther ? `Others: ${languageOther}` : language;
+
+  const goesToSupersede = comments2 === "Yes";
+
+  /* ── Comment 2 change handler ── */
+  function handleComments2Change(val) {
+    setComments2(val);
+    if (val === "Yes") {
+      setNotPublishable(false);
+    } else if (val !== "") {
+      setNotPublishable(true);
+    }
+  }
+
+  /* ── Non-publishable uncheck handler ── */
+  function handleNotPublishableChange(checked) {
+    if (!checked && notPublishable) {
+      setShowUncheckWarning(true);
+    } else {
+      setNotPublishable(checked);
+    }
+  }
+
+  /* ── Confirm uncheck warning → reset Comment 2 to Yes ── */
+  function confirmUncheck() {
+    setNotPublishable(false);
+    setComments2("Yes");
+    setShowUncheckWarning(false);
+  }
 
   /* ── collect form fields ── */
   function gatherFields() {
@@ -81,7 +112,7 @@ export default function SearchForm({ sheet, refId, userId, searchData, onDone })
     return {
       searchType:          fd.get("searchType")          || "",
       comments1:           fd.get("comments1")           || "",
-      comments2:           fd.get("comments2")           || "",
+      comments2,
       websearch1:          fd.get("websearch1")          || "",
       websearch2:          fd.get("websearch2")          || "",
       websearch3:          fd.get("websearch3")          || "",
@@ -115,10 +146,16 @@ export default function SearchForm({ sheet, refId, userId, searchData, onDone })
     }
   };
 
-  /* ── Submit Search ── */
-  async function handleSubmit(e) {
+  /* ── Submit button clicked → show confirmation modal ── */
+  function handleSubmitClick(e) {
     e.preventDefault();
     if (!userId) { alert("Session expired. Please login again."); return; }
+    setShowSubmitModal(true);
+  }
+
+  /* ── Actual submit after modal Proceed ── */
+  async function proceedSubmit() {
+    setShowSubmitModal(false);
     const fields = gatherFields();
     const fd = new FormData();
     Object.entries({ sheet, refId, userId, language, languageOther,
@@ -155,7 +192,7 @@ export default function SearchForm({ sheet, refId, userId, searchData, onDone })
         </div>
       </div>
 
-      <form id="sds-search-form" onSubmit={handleSubmit} style={{ padding: "20px 24px 24px" }}>
+      <form id="sds-search-form" onSubmit={e => e.preventDefault()} style={{ padding: "20px 24px 24px" }}>
 
         {/* ── Section: Language Detection ── */}
         <SectionLabel icon="🌐" title="Language Detection" />
@@ -220,10 +257,26 @@ export default function SearchForm({ sheet, refId, userId, searchData, onDone })
             </div>
             <div style={field}>
               <FieldLabel>Search Comments 2</FieldLabel>
-              <select name="comments2" defaultValue={searchData?.comments2 || ""} style={sel}>
+              <select
+                value={comments2}
+                onChange={e => handleComments2Change(e.target.value)}
+                style={sel}
+              >
                 <option value="" disabled>Select</option>
                 {SEARCH_COMMENTS_2.map(v => <option key={v}>{v}</option>)}
               </select>
+              {comments2 && (
+                <div style={{
+                  marginTop: 6, display: "inline-flex", alignItems: "center", gap: 5,
+                  fontSize: 11, fontWeight: 700, padding: "3px 10px", borderRadius: 99,
+                  background: goesToSupersede ? "#ede9fe" : "#fef3c7",
+                  color: goesToSupersede ? "#6d28d9" : "#92400e",
+                  border: `1px solid ${goesToSupersede ? "#c4b5fd" : "#fbbf24"}`,
+                  alignSelf: "flex-start",
+                }}>
+                  {goesToSupersede ? "→ Supersede" : "→ Transcription (skips Supersede)"}
+                </div>
+              )}
             </div>
           </div>
 
@@ -297,17 +350,23 @@ export default function SearchForm({ sheet, refId, userId, searchData, onDone })
         </div>
 
         {/* ── Section: Not Publishable ── */}
-        <div style={{ ...sectionBox, background: notPublishable ? "#fef2f2" : "#f8fafc", borderColor: notPublishable ? "#fca5a5" : "#e2e8f0" }}>
-          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: "pointer" }}>
+        <div style={{ ...sectionBox, background: notPublishable ? "#fef2f2" : "#f8fafc", borderColor: notPublishable ? "#fca5a5" : "#e2e8f0", opacity: goesToSupersede ? 0.45 : 1, transition: "opacity 0.2s" }}>
+          <label style={{ display: "flex", alignItems: "center", gap: 10, cursor: goesToSupersede ? "not-allowed" : "pointer" }}>
             <input
               type="checkbox"
               checked={notPublishable}
-              onChange={e => setNotPublishable(e.target.checked)}
-              style={{ width: 16, height: 16, cursor: "pointer" }}
+              disabled={goesToSupersede}
+              onChange={e => handleNotPublishableChange(e.target.checked)}
+              style={{ width: 16, height: 16, cursor: goesToSupersede ? "not-allowed" : "pointer" }}
             />
             <span style={{ fontWeight: 700, fontSize: 14, color: notPublishable ? "#dc2626" : "#0f172a" }}>
               Not Publishable
             </span>
+            {goesToSupersede && (
+              <span style={{ fontSize: 11, color: "#94a3b8", fontWeight: 500 }}>
+                (not applicable when Comment 2 is "Yes")
+              </span>
+            )}
           </label>
           <p style={{ margin: "6px 0 0 26px", fontSize: 12, color: "#475569" }}>
             If checked, this record will skip Supersede and go directly to Transcription.
@@ -344,7 +403,8 @@ export default function SearchForm({ sheet, refId, userId, searchData, onDone })
         {/* ── Submit ── */}
         <div style={{ marginTop: 20, display: "flex", gap: 12, alignItems: "center" }}>
           <button
-            type="submit"
+            type="button"
+            onClick={handleSubmitClick}
             disabled={loading || !statusUpdated || status === "Waiting Response"}
             style={{
               padding: "12px 32px", borderRadius: 10, border: "none",
@@ -363,6 +423,83 @@ export default function SearchForm({ sheet, refId, userId, searchData, onDone })
         </div>
 
       </form>
+
+      {/* ── Submit Confirmation Modal ── */}
+      {showSubmitModal && (
+        <div style={modalBackdrop} onClick={() => setShowSubmitModal(false)}>
+          <div style={modalCard} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>
+              {goesToSupersede ? "🔄" : "⚡"}
+            </div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a", marginBottom: 8 }}>
+              Confirm Submission
+            </div>
+            <div style={{
+              padding: "14px 16px", borderRadius: 10, marginBottom: 18,
+              background: goesToSupersede ? "#f5f3ff" : "#fffbeb",
+              border: `1px solid ${goesToSupersede ? "#c4b5fd" : "#fbbf24"}`,
+            }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: goesToSupersede ? "#6d28d9" : "#92400e", marginBottom: 4 }}>
+                {goesToSupersede ? "→ Next Stage: Supersede" : "→ Next Stage: Transcription"}
+              </div>
+              <div style={{ fontSize: 13, color: "#475569", lineHeight: 1.6 }}>
+                {goesToSupersede
+                  ? "Comment 2 is \"Yes\" — this record will proceed to the Supersede stage after search."
+                  : "Comment 2 indicates a non-publishable outcome — this record will skip Supersede and go directly to Transcription."}
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={proceedSubmit}
+                style={{ flex: 1, padding: "11px", borderRadius: 9, border: "none", background: "#2563eb", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}
+              >
+                Proceed
+              </button>
+              <button
+                onClick={() => setShowSubmitModal(false)}
+                style={{ flex: 1, padding: "11px", borderRadius: 9, border: "1.5px solid #e2e8f0", background: "#fff", color: "#0f172a", fontWeight: 600, fontSize: 14, cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── Uncheck Warning Modal ── */}
+      {showUncheckWarning && (
+        <div style={modalBackdrop} onClick={() => setShowUncheckWarning(false)}>
+          <div style={modalCard} onClick={e => e.stopPropagation()}>
+            <div style={{ fontSize: 32, marginBottom: 12 }}>⚠️</div>
+            <div style={{ fontSize: 17, fontWeight: 800, color: "#0f172a", marginBottom: 8 }}>
+              Remove Non-Publishable?
+            </div>
+            <div style={{
+              padding: "14px 16px", borderRadius: 10, marginBottom: 18,
+              background: "#fef2f2", border: "1px solid #fca5a5",
+            }}>
+              <div style={{ fontSize: 13, color: "#b91c1c", lineHeight: 1.6 }}>
+                Unchecking <strong>Non-Publishable</strong> will automatically reset <strong>Comment 2 to "Yes"</strong> and route this record to <strong>Supersede</strong> instead of Transcription.
+              </div>
+            </div>
+            <div style={{ display: "flex", gap: 10 }}>
+              <button
+                onClick={confirmUncheck}
+                style={{ flex: 1, padding: "11px", borderRadius: 9, border: "none", background: "#dc2626", color: "#fff", fontWeight: 700, fontSize: 14, cursor: "pointer" }}
+              >
+                Yes, Continue
+              </button>
+              <button
+                onClick={() => setShowUncheckWarning(false)}
+                style={{ flex: 1, padding: "11px", borderRadius: 9, border: "1.5px solid #e2e8f0", background: "#fff", color: "#0f172a", fontWeight: 600, fontSize: 14, cursor: "pointer" }}
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }
@@ -392,4 +529,6 @@ const field      = { display: "flex", flexDirection: "column" };
 const sel        = { padding: "8px 10px", borderRadius: 8, border: "2px solid #94a3b8", background: "#fff", fontSize: 13, color: "#0f172a", width: "100%", boxSizing: "border-box", outline: "none" };
 const inp        = { padding: "8px 10px", borderRadius: 8, border: "2px solid #94a3b8", background: "#fff", fontSize: 13, color: "#0f172a", width: "100%", boxSizing: "border-box", outline: "none" };
 const ta         = { padding: "8px 10px", borderRadius: 8, border: "2px solid #94a3b8", background: "#fff", fontSize: 13, color: "#0f172a", width: "100%", boxSizing: "border-box", resize: "vertical", fontFamily: "inherit" };
-const updateBtn  = { padding: "9px 20px", borderRadius: 8, border: "none", background: "#0f172a", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" };
+const updateBtn    = { padding: "9px 20px", borderRadius: 8, border: "none", background: "#0f172a", color: "#fff", fontWeight: 700, fontSize: 13, cursor: "pointer", whiteSpace: "nowrap" };
+const modalBackdrop = { position: "fixed", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 999 };
+const modalCard     = { background: "#fff", borderRadius: 16, padding: "28px 28px 24px", width: 420, boxShadow: "0 20px 60px rgba(0,0,0,0.2)", textAlign: "center" };

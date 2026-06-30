@@ -5,21 +5,23 @@ import CallNotificationOverlay from "../components/CallNotificationOverlay";
 
 export default function SuperAdminLayout({ children }) {
   return (
-    <div style={{ display: "flex" }}>
+    <div style={{ display: "flex", minHeight: "100vh" }}>
       <SuperAdminSidebar />
 
       <div
         style={{
-          marginLeft: "220px",
-          padding: "28px 30px 30px 56px",
-          width: "100%",
-          minHeight: "100vh",
+          marginLeft: 230,
+          flex: 1,
+          padding: "28px 30px 40px 40px",
           background: "#f8f9fc",
           boxSizing: "border-box",
+          minHeight: "100vh",
+          overflowY: "auto",
         }}
       >
         {children}
       </div>
+
       <CallNotificationOverlay />
     </div>
   );

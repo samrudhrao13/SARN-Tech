@@ -36,10 +36,17 @@ import BatchAssign from "./pages/AdminBatch/BatchAssign";
 import BatchBilling from "./pages/AdminBatch/BatchBilling";
 import BatchReport from "./pages/AdminBatch/BatchReport";
 import BatchWorkflowControl from "./pages/AdminBatch/BatchWorkflowControl";
+import BatchDatabase from "./pages/AdminBatch/BatchDatabase";
 
 /* ================= CALLS & MEETINGS (ALL ROLES) ================= */
 import CallsMeetings from "./pages/CallsMeetings";
 import CallRoom from "./pages/User/CallRoom";
+
+/* ================= CHAT HUB ================= */
+import TeamChat from "./pages/Chat/TeamChat";
+import DirectChat from "./pages/Chat/DirectChat";
+import ChatHub from "./pages/Chat/ChatHub";
+import { ChatProvider } from "./context/ChatContext";
 
 /* ================= USER (SDS) ================= */
 import UserDashboard from "./pages/User/UserDashboard";
@@ -145,6 +152,7 @@ function RoleRedirect() {
 
 export default function App() {
   return (
+    <ChatProvider>
     <Routes>
 
       {/* ===== PUBLIC ===== */}
@@ -281,6 +289,17 @@ export default function App() {
           }
         />
 
+        <Route
+          path="/admin/batch/database"
+          element={
+            <ProtectedAdmin>
+              <AdminLayout>
+                <BatchDatabase />
+              </AdminLayout>
+            </ProtectedAdmin>
+          }
+        />
+
       <Route path="/admin/sds/billing"  element={<ProtectedAdmin><AdminLayout><SDSBilling /></AdminLayout></ProtectedAdmin>} />
       <Route path="/admin/sds/reports"  element={<ProtectedAdmin><AdminLayout><SDSReports /></AdminLayout></ProtectedAdmin>} />
       <Route path="/admin/sds/scanner" element={<ProtectedAdmin><AdminLayout><SDSScanner /></AdminLayout></ProtectedAdmin>} />
@@ -304,6 +323,21 @@ export default function App() {
       <Route path="/admin/calls" element={<ProtectedAdmin><AdminLayout><CallsMeetings /></AdminLayout></ProtectedAdmin>} />
       <Route path="/super-admin/calls" element={<ProtectedSuperAdmin><SuperAdminLayout><CallsMeetings /></SuperAdminLayout></ProtectedSuperAdmin>} />
       <Route path="/user/calls" element={<ProtectedUser><UserLayout><CallsMeetings /></UserLayout></ProtectedUser>} />
+
+      {/* ===== TEAM CHAT — all roles ===== */}
+      <Route path="/admin/chat" element={<ProtectedAdmin><AdminLayout><TeamChat /></AdminLayout></ProtectedAdmin>} />
+      <Route path="/super-admin/chat" element={<ProtectedSuperAdmin><SuperAdminLayout><TeamChat /></SuperAdminLayout></ProtectedSuperAdmin>} />
+      <Route path="/user/chat" element={<ProtectedUser><UserLayout><TeamChat /></UserLayout></ProtectedUser>} />
+
+      {/* ===== DIRECT MESSAGES — all roles ===== */}
+      <Route path="/admin/direct-chat" element={<ProtectedAdmin><AdminLayout><DirectChat /></AdminLayout></ProtectedAdmin>} />
+      <Route path="/super-admin/direct-chat" element={<ProtectedSuperAdmin><SuperAdminLayout><DirectChat /></SuperAdminLayout></ProtectedSuperAdmin>} />
+      <Route path="/user/direct-chat" element={<ProtectedUser><UserLayout><DirectChat /></UserLayout></ProtectedUser>} />
+
+      {/* ===== CHAT HUB (unified) — all roles ===== */}
+      <Route path="/admin/messages" element={<ProtectedAdmin><AdminLayout><ChatHub /></AdminLayout></ProtectedAdmin>} />
+      <Route path="/super-admin/messages" element={<ProtectedSuperAdmin><SuperAdminLayout><ChatHub /></SuperAdminLayout></ProtectedSuperAdmin>} />
+      <Route path="/user/messages" element={<ProtectedUser><UserLayout><ChatHub /></UserLayout></ProtectedUser>} />
 
       {/* ===== USER (SDS) ===== */}
       <Route path="/user/dashboard" element={<ProtectedUser><UserLayout><UserDashboard /></UserLayout></ProtectedUser>} />
@@ -374,5 +408,6 @@ export default function App() {
       <Route path="*" element={<Navigate to="/login" replace />} />
 
     </Routes>
+    </ChatProvider>
   );
 }

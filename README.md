@@ -1,154 +1,93 @@
-# SARN — Full-Stack Reference Management System
+# SARN Technologies — Workflow Management Platform
 
-A full-stack web application for managing Safety Data Sheet (SDS) references through multi-stage workflows, with role-based access for Super Admin, Admin, and Users. Includes an AI-powered chatbot, SDS document scanner, real-time calls & meetings via Google Meet, and comprehensive billing/reporting.
+> A cloud-native, role-based platform for Safety Data Sheet (SDS) verification, Data Queue (DQ) processing, and Batch document operations — with built-in messaging, video calls, AI translation, and full audit trail export.
+
+**Live deployment:**
+- Frontend — Firebase Hosting
+- Backend — Google Cloud Run (asia-south1)
 
 ---
 
-## Deployment
+## Overview
 
-| Layer | Platform | URL |
-|-------|----------|-----|
-| Frontend | Firebase Hosting | Deployed via `firebase deploy` |
-| Backend | Google Cloud Run (asia-south1) | `https://sarn-backend-862276535294.asia-south1.run.app` |
-| SDS Scanner | Python Flask (local / separate deploy) | `http://localhost:5050` |
+SARN Technologies replaces fragmented spreadsheet-driven document workflows with a single, auditable, real-time system. Every record uploaded into SARN moves through a structured, stage-gated pipeline — with every action attributed to a named user and timestamped. Administrators get live visibility, users get a clear task queue, and billing teams get an instant, accurate export.
+
+---
+
+## Features
+
+### Three Workflow Modules
+
+| Module | Stages |
+|---|---|
+| **SDS** (Safety Data Sheets) | Search → Supersede → Transcription → Billing |
+| **DQ** (Data Queue) | Transcription → Billing |
+| **Batch** | Verification → Billing |
+
+All three share the same infrastructure, role system, reporting engine, and communication layer.
+
+### Core Capabilities
+
+| Feature | Description |
+|---|---|
+| **Upload & Duplicate Detection** | Admin uploads Excel; records imported in bulk with automatic duplicate flagging |
+| **Assignment Engine** | Admin assigns records to users per sheet; real-time assigned/in-progress/completed counts |
+| **Stage-Gated Workflow** | Users complete structured forms per stage; system auto-advances records |
+| **Audit Trail Export** | One-click Excel export — every field, who completed each stage, date completed |
+| **Billing Module** | Records auto-flagged billing-ready on final stage; admin marks done with timestamp |
+| **Reports & Analytics** | Per-user productivity, period filtering, all-time vs period breakdown, company-wide view |
+| **SDS Scanner** | Upload PDFs; AI-assisted field extraction reduces manual transcription |
+| **Team Chat + DMs** | Built-in messaging with unread badge and MS Teams-style sliding toast notifications |
+| **Google Meet** | Start or join video calls directly from the platform |
+| **AI Translation** | GROQ-powered chatbot for SDS content translation and PDF Q&A |
+| **Attendance Tracking** | Login/logout timestamps per user; Super Admin attendance dashboard |
+| **Database View** | Full record database per sheet with search, filter, status, and export |
+
+### Role-Based Access
+
+| Role | Capabilities |
+|---|---|
+| **Super Admin** | Full system — all users, all processes, attendance, company-wide reports, notifications |
+| **Admin** | Upload, assign, workflow monitor, billing, reports, database export — per process |
+| **User** | Own assigned tasks, completed history, profile, messaging |
 
 ---
 
 ## Tech Stack
 
 | Layer | Technology |
-|-------|-----------|
+|---|---|
 | Frontend | React 18 + Vite + React Router v6 |
+| Frontend Hosting | Firebase Hosting (global CDN) |
 | Backend | Node.js + Express.js |
-| Database | Firebase Firestore |
-| Storage | Firebase Storage |
-| Auth | JWT (jsonwebtoken) — stateless, 12-hour tokens |
-| Password Security | bcryptjs — salt factor 12, lazy migration |
-| AI (Chatbot & Scanner) | Groq API (LLaMA 3.3 70B) |
-| SDS Scanner Microservice | Python 3 + Flask |
-| PDF Generation | PDFKit |
-| PDF Extraction | pdfjs-dist (NodeCMapReaderFactory for CJK) + pdf-parse fallback |
-| Excel Parsing | SheetJS (xlsx) |
-| Calls & Meetings | Google Calendar API v3 + Google Meet |
-| Email Notifications | Nodemailer (Gmail SMTP) |
-| Google Drive | Google Drive API v3 |
-| Dev Runner | concurrently (backend + frontend + scanner) |
+| Backend Hosting | Google Cloud Run (serverless, auto-scales) |
+| Database | Google Firestore (real-time NoSQL) |
+| File Storage | Google Cloud Storage |
+| Authentication | JWT — role-encoded claims, 12-hour expiry |
+| Password Security | bcryptjs — salt factor 12 |
+| Excel I/O | @e965/xlsx (CVE-patched SheetJS fork) |
+| PDF Processing | pdfkit (generate) + pdfjs-dist + pdf-parse (extract) |
+| AI | GROQ API — LLaMA 3.3 70B |
+| Video Calls | Google Calendar API v3 + Google Meet |
+| Email | Nodemailer (Gmail SMTP) |
+| Scheduling | node-cron (background notification jobs) |
 
 ---
 
-## Features
+## Security
 
-### Security
-
-#### JWT Authentication
-- Every login issues a signed **JSON Web Token** (JWT) with 12-hour expiry
-- Token payload: `userId`, `role`, `name`
-- `JWT_SECRET` stored exclusively as a Cloud Run environment variable
-- `verifyToken` middleware protects sensitive endpoints (`/admin/chat`, `/super-admin/reset-password`)
-- Axios request interceptor in `apiClient.js` automatically attaches `Authorization: Bearer <token>` to every API call — no per-component changes needed
-
-#### Password Hashing (bcrypt)
-- All passwords stored as **bcrypt hashes** (salt factor 12) — never plaintext
-- **Lazy migration**: on first login after upgrade, plaintext passwords are detected, validated, hashed, and replaced in Firestore transparently — no forced reset, no downtime
-- All new users and password resets store hashed values going forward
-- Superadmin credentials stored in Firestore (never hardcoded) and protected by the same bcrypt check
-
-#### Chatbot Prompt Injection Defense
-- **Input sanitizer** strips known injection phrases (`ignore previous instructions`, `forget everything`, `act as`, `jailbreak`, `DAN mode`, etc.) and caps input at 2,000 characters
-- **System prompt security rules** — absolute rules embedded in the LLM prompt that cannot be overridden by any user message: never reveal passwords, credentials, or raw context data; never follow jailbreak-style instructions
-
----
-
-### Role-Based Access Control
-- Three roles: **Super Admin**, **Admin**, and **User**
-- Protected routes per role — unauthorized access redirects to login
-- Role-aware sidebar navigation and dashboards
-
-### SDS Workflow (4-Stage Pipeline)
-Manages Safety Data Sheet processing through four sequential stages:
-1. **Search** — Locate and verify SDS documents
-2. **Supersede** — Check for newer/superseding versions
-3. **Transcription** — Data entry from source SDS documents
-4. **Billing** — Generate billing records for completed work
-
-### Batch Workflow
-- Bulk SDS processing with batch assignment and upload
-- Batch tracking dashboard with per-user progress
-- Batch billing and report generation
-- **Batch Workflow Control** — admin control panel to manage batch pipeline stages
-
-### DQ (Data Quality) Workflow
-- Data quality review pipeline for uploaded references
-- DQ assignment, processing forms, and sign-off
-- DQ billing integration and reporting
-
-### Reference Database
-- Browse, filter, and manage all uploaded references
-- Per-company, per-sheet filtering
-- Export and search capabilities
-
-### Excel Upload
-- Bulk upload references via `.xlsx` / `.xls` files
-- Automatic parsing and Firestore insertion
-- Supported across SDS, Batch, and DQ workflows
-
-### Reports & Billing
-- Per-user, per-sheet billing reports for all three workflows (SDS, Batch, DQ)
-- Super Admin consolidated reports across all users and businesses
-- Columns: Assigned, Completed, **Prev. Completed**, **Total Pending**, Billed
-- All-time completed tracking vs period-filtered completed (correctly differentiated)
-- PDF report generation (downloadable) and on-screen table view
-- Date-range filtering for period-based reporting
-- **Server-side status filter** on SDS Billing — filtering by Ready/Pending is applied before pagination, so page count and totals correctly reflect only the filtered records
-- **Back button** on all billing pages uses browser history (`navigate(-1)`) instead of hardcoded dashboard redirect
-
-### AI-Powered Chatbot
-- Floating chatbot widget available across all pages
-- Powered by **Groq API (LLaMA 3.3 70B)**
-- **PDF Upload & Q&A** — upload any PDF and ask questions about its contents
-- **PDF Translation** — translate PDF sections line-by-line with side-by-side view:
-  - Original text on the left, translated text on the right
-  - Sentence-level splitting with numbered-list LLM prompting guarantees perfect 1:1 alignment
-  - Supports all major languages including Japanese and other CJK scripts
-- **Japanese / CJK PDF support** — uses `NodeCMapReaderFactory` to read character map files directly from the filesystem, enabling correct text extraction from Japanese SDS documents that previously failed silently
-
-### SDS Scanner (AI Microservice)
-- Standalone Python + Flask microservice (`sds-scanner/`)
-- Upload any SDS PDF and automatically extract:
-  - Product name, manufacturer, CAS numbers
-  - GHS hazard pictograms (detected via image recognition)
-  - Physical/chemical properties, hazard statements, first aid measures
-  - Storage, disposal, and emergency contact information
-- Powered by Groq (LLaMA 3.3 70B) for field extraction
-- Handles both text-based and scanned (image) PDFs
-- Results displayed in the **SDS Scanner** admin page with copy-to-clipboard
-
-### Calls & Meetings (Google Meet Integration)
-- **Group Calls** — call all currently online users with one click
-- **Direct Calls** — 1-on-1 direct call between any two users
-- **Schedule Meetings** — schedule future meetings with title, time, duration, description
-- **Google Meet links** automatically generated via Google Calendar API v3 (OAuth2)
-- Real-time **call notification overlays** across all layouts (User, Admin, SuperAdmin) — poll every 5 seconds
-- **CallRoom page** — Google Meet transition screen that opens Meet in a new tab, tracks join/leave status
-- **My Meetings tab** — view all scheduled meetings with join link and copy-to-clipboard
-- Role-aware navigation and call history per user
-
-### Attendance Tracking
-- Super Admin attendance management
-- View and manage attendance records per user
-
-### User Management
-- Admins can create users and assign roles
-- Super Admin user list with edit capabilities
-- Status tracking (online/offline/busy)
-
-### Notifications
-- Admin and Super Admin notification pages
-- System-level alerts and call notifications
-
-### Google Drive Integration
-- Linked Google Drive access for SDS document retrieval
-- Drive API v3 with service account credentials
+| Layer | Measure |
+|---|---|
+| Authentication | JWT required on all protected endpoints via `verifyToken` middleware |
+| Passwords | bcrypt hashed (12 salt rounds) — no plaintext storage; lazy migration on login |
+| CORS | Restricted to specific Firebase Hosting domains only |
+| Rate Limiting | `express-rate-limit` — 20 attempts / 15 min on `/auth/login` and `/auth/reset` |
+| File Uploads | Server-side mimetype + extension validation — only `.xlsx`, `.xls`, `.pdf` accepted |
+| Error Handling | `err.message` never sent to client — only generic messages returned; real errors logged server-side |
+| Drive Query | Input stripped to alphanumeric + safe characters only before Drive API query |
+| Credentials | All API keys in Cloud Run environment variables — never in source code or committed files |
+| Excel CVE | `@e965/xlsx` replaces abandoned `xlsx@0.18.5` (CVE-2023-30533) |
+| Chatbot | Input sanitised for prompt injection; system prompt enforces hard rules |
 
 ---
 
@@ -156,63 +95,46 @@ Manages Safety Data Sheet processing through four sequential stages:
 
 ```
 SARN Final/
-├── frontend/                        # React + Vite app
+├── frontend/                        # React + Vite SPA
 │   ├── src/
 │   │   ├── pages/
-│   │   │   ├── Auth/                # Login, ResetPassword
-│   │   │   ├── Admin/               # Dashboard, Upload, References, Workflow,
-│   │   │   │                        # SDSReports, SDSBilling, SDSScanner,
-│   │   │   │                        # Database, Notifications
-│   │   │   ├── AdminBatch/          # BatchAssign, BatchUpload, BatchBilling,
-│   │   │   │                        # BatchReport, BatchWorkflowControl
-│   │   │   ├── AdminDQ/             # DQDatabase, DQUpload, DQBilling, DQReports
-│   │   │   ├── SuperAdmin/          # Dashboard, CreateUser, UserList,
-│   │   │   │                        # AttendancePage, Reports, Notifications
-│   │   │   ├── User/                # UserDashboard, AssignedSDSWork,
-│   │   │   │                        # CompletedSDSWork, WorkflowUserView,
-│   │   │   │                        # Forms/ (SupersedeForm, TranscriptionForm)
-│   │   │   ├── UserBatch/           # BatchTasks, BatchCompleted, BatchWorkflow
-│   │   │   ├── UserDQ/              # AssignedDQWork, CompletedDQWork, DQWorkForm
-│   │   │   └── CallsMeetings.jsx    # Calls & Meetings hub (all roles)
-│   │   │   └── User/CallRoom.jsx    # Google Meet transition room page
+│   │   │   ├── Admin/               # SDS admin pages (Dashboard, Upload, Workflow, Billing, Reports, Scanner, Database)
+│   │   │   ├── AdminDQ/             # DQ admin pages
+│   │   │   ├── AdminBatch/          # Batch admin pages (includes Database)
+│   │   │   ├── User/                # SDS user pages + workflow forms
+│   │   │   ├── UserDQ/              # DQ user pages
+│   │   │   ├── UserBatch/           # Batch user pages
+│   │   │   ├── SuperAdmin/          # Super admin pages
+│   │   │   ├── Chat/                # Unified messaging hub (ChatHub, TeamChat, DirectChat)
+│   │   │   ├── CallsMeetings/       # Google Meet integration
+│   │   │   └── Auth/                # Login, ResetPassword
 │   │   ├── components/
-│   │   │   ├── ChatBot.jsx          # AI chatbot with PDF Q&A and translation
-│   │   │   ├── CallNotificationOverlay.jsx  # Real-time incoming call overlay
-│   │   │   ├── AdminSidebar.jsx
+│   │   │   ├── AdminSidebar.jsx     # Role-aware sidebar with unread badge
 │   │   │   ├── UserSidebar.jsx
 │   │   │   ├── SuperAdminSidebar.jsx
-│   │   │   └── StatusPicker.jsx     # User status selector
+│   │   │   ├── ChatBot.jsx          # AI chatbot with PDF Q&A and translation
+│   │   │   └── CallNotificationOverlay.jsx
+│   │   ├── context/
+│   │   │   └── ChatContext.jsx      # Global unread count + toast notification provider
 │   │   ├── layouts/                 # AdminLayout, UserLayout, SuperAdminLayout
-│   │   ├── config/                  # apiClient (Axios instance)
-│   │   ├── App.jsx                  # Routes + Protected Components
-│   │   └── main.jsx
-│   ├── public/
-│   ├── package.json
-│   └── index.html
+│   │   └── config/
+│   │       └── apiClient.js         # Axios instance with JWT interceptor
+│   └── public/
 │
-├── backend/                         # Express.js server (Cloud Run)
-│   ├── server.js                    # Main server — all API endpoints
-│   ├── sarn-drive-access.json       # Google Drive service account (gitignored, included in Cloud Run)
-│   ├── firestore.rules
-│   ├── firestore.indexes.json
-│   ├── storage.rules
+├── backend/
+│   ├── server.js                    # All API routes and business logic
 │   └── package.json
 │
 ├── sds-scanner/                     # Python Flask AI microservice
-│   ├── app.py                       # Flask app — /scan endpoint
-│   ├── requirements.txt
+│   ├── app.py                       # /scan endpoint
 │   ├── utils/
-│   │   ├── pdf_text.py              # PDF text extraction
-│   │   ├── pdf_images.py            # PDF-to-image rendering
+│   │   ├── pdf_text.py
+│   │   ├── pdf_images.py
 │   │   ├── pictogram.py             # GHS pictogram detection
-│   │   └── groq_llm.py              # Groq LLM field extraction
-│   ├── templates/index.html         # Scanner standalone UI
-│   ├── ghs_templates/               # GHS pictogram reference images
-│   └── .env.example
+│   │   └── groq_llm.py
+│   └── requirements.txt
 │
-├── package.json                     # Root — concurrently runner
-├── firebase.json                    # Firebase project config
-├── .firebaserc                      # Firebase project alias
+├── firebase.json
 ├── .gitignore
 └── .gcloudignore
 ```
@@ -222,194 +144,114 @@ SARN Final/
 ## Getting Started
 
 ### Prerequisites
-
 - Node.js v18+
-- Python 3.9+
+- Python 3.9+ (for SDS Scanner)
 - Firebase CLI: `npm install -g firebase-tools`
 - Google Cloud SDK: `gcloud` CLI
 
-### 1. Clone the Repository
+### Install Dependencies
 
 ```bash
-git clone https://github.com/samrudhrao13/SARN.git
-cd SARN
-```
-
-### 2. Install All Dependencies
-
-```bash
-# Root runner
-npm install
-
 # Backend
-cd backend && npm install && cd ..
+cd backend && npm install
 
 # Frontend
-cd frontend && npm install && cd ..
+cd frontend && npm install
 
-# SDS Scanner (Python)
-cd sds-scanner
-pip install -r requirements.txt
-cd ..
+# SDS Scanner
+cd sds-scanner && pip install -r requirements.txt
 ```
 
-### 3. Configure Environment Variables
+### Environment Variables
 
-**Backend** — create `backend/.env`:
-```env
-GROQ_API_KEY=your_groq_api_key
+**Backend — set as Cloud Run environment variables (never in code):**
+
+```
+JWT_SECRET=
+GROQ_API_KEY=
+GOOGLE_CLIENT_ID=
+GOOGLE_CLIENT_SECRET=
+GOOGLE_REFRESH_TOKEN=
+EMAIL_USER=
+EMAIL_PASS=
 ```
 
-**SDS Scanner** — create `sds-scanner/.env`:
-```env
-GROQ_API_KEY=your_groq_api_key
-```
+For local development, create `backend/.env` with the above values.
 
-**Cloud Run (production)** — set via gcloud:
-```bash
-gcloud run services update sarn-backend --region=asia-south1 \
-  --update-env-vars="GROQ_API_KEY=...,GOOGLE_CLIENT_ID=...,GOOGLE_CLIENT_SECRET=...,GOOGLE_REFRESH_TOKEN=..."
-```
-
-**Service account credentials** (never commit these):
-- `backend/sarn-technologies-21d6e-a45c0f181abc.json` — Firebase Admin SDK
-- `backend/sarn-drive-access.json` — Google Drive API
-
-### 4. Run Locally (All Services)
+### Run Locally
 
 ```bash
-npm start
+# Backend
+cd backend && node server.js
+
+# Frontend
+cd frontend && npm run dev
+
+# SDS Scanner (optional)
+cd sds-scanner && python app.py
 ```
 
-This starts all three services concurrently:
-- Backend at `http://localhost:4002`
-- Frontend at `http://localhost:5173`
-- SDS Scanner at `http://localhost:5050`
+---
 
-Or run individually:
+## Deployment
+
+### Frontend → Firebase Hosting
+
 ```bash
-npm run backend    # Express server
-npm run frontend   # Vite dev server
-npm run scanner    # Python Flask scanner
+cd frontend
+npm run build
+firebase deploy --only hosting
+```
+
+### Backend → Google Cloud Run
+
+```bash
+cd backend
+gcloud run deploy sarn-backend \
+  --source . \
+  --region asia-south1 \
+  --allow-unauthenticated
 ```
 
 ---
 
-## API Endpoints
+## SDS Workflow Detail
 
-### References
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/upload-excel` | Upload Excel file with references |
-| GET | `/references` | List references (`company`, `sheet` query params) |
-| GET | `/references/:company/:sheet/:refId` | Get single reference |
-
-### SDS Workflow
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/workflow/search` | Submit Search stage |
-| POST | `/workflow/supersede` | Submit Supersede stage |
-| POST | `/workflow/transcription` | Submit Transcription stage |
-| POST | `/workflow/billing` | Submit Billing stage |
-
-### Assignments
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/assign` | Assign users to workflow stages |
-| GET | `/assigned/:email` | Get assignments for a user |
-
-### Reports
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/admin/reports/sds` | SDS billing report (date range) |
-| GET | `/admin/reports/batch` | Batch report (date range) |
-| GET | `/admin/reports/dq` | DQ report (date range) |
-| GET | `/super-admin/reports` | Consolidated super admin report |
-
-### Calls & Meetings
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/calls/create` | Create group call room (generates Meet link) |
-| POST | `/calls/direct` | Create direct call between two users |
-| POST | `/calls/join` | Mark user as joined a call room |
-| POST | `/calls/leave` | Mark user as left a call room |
-| GET | `/calls/room/:roomId` | Get call room details and Meet link |
-| GET | `/calls/users` | List online users for calling |
-| GET | `/calls/active` | List active call rooms |
-| POST | `/meetings/schedule` | Schedule a meeting (generates Meet link + sends email) |
-| GET | `/meetings/mine` | Get meetings for current user |
-
-### AI (Chatbot)
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/admin/pdf/upload` | Upload PDF for chatbot context |
-| POST | `/admin/pdf/ask` | Ask a question about uploaded PDF |
-| POST | `/admin/pdf/translate-section` | Translate PDF section line-by-line |
+```
+Upload (Admin)  →  Records created in Firestore
+      ↓
+Assign (Admin)  →  User receives task in sidebar
+      ↓
+Stage 1: Search        (web search, comments, flags)
+      ↓
+Stage 2: Supersede     (new repo number, optional PDF upload)
+      ↓
+Stage 3: Transcription (data entry, verification date)
+      ↓
+Billing Ready (auto-flagged by system)
+      ↓
+Billing Complete (Admin marks done — ID + timestamp captured)
+      ↓
+COMPLETED — full audit trail in Excel export
+```
 
 ---
 
-## User Roles
+## Excel Export Columns (SDS)
 
-| Role | Access |
-|------|--------|
-| **Super Admin** | Full system access — create users, manage attendance, view all workflows, consolidated reports, notifications |
-| **Admin** | Upload references, assign work, monitor all workflow stages, generate reports, access SDS Scanner, manage calls/meetings |
-| **User** | View and complete assigned workflow tasks, join calls/meetings, view own reports |
+The SDS database export includes every field plus completion audit data:
 
----
-
-## Workflows
-
-### SDS Workflow
-Manages Safety Data Sheet processing through four sequential stages:
-1. **Search** — Locate SDS documents
-2. **Supersede** — Check for newer/superseding versions
-3. **Transcription** — Data entry from source documents
-4. **Billing** — Generate billing records
-
-### Batch Workflow
-Handles bulk SDS processing with batch assignment, tracking, and reporting. Admin has a Workflow Control panel to manage batch pipeline stages.
-
-### DQ (Data Quality) Workflow
-Quality review pipeline covering data validation, processing, and sign-off with billing integration.
-
----
-
-## Google Meet Integration
-
-Calls and meetings use the **Google Calendar API v3** with OAuth2 to generate real `meet.google.com` links:
-
-1. A Google OAuth2 client is configured with `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `GOOGLE_REFRESH_TOKEN`
-2. Every call/meeting creation automatically creates a Google Calendar event with a Google Meet conference
-3. The Meet link is stored in Firestore and returned to users
-4. Users open Meet in a new tab; the CallRoom page tracks join/leave status
-
----
-
-## SDS Scanner Microservice
-
-The `sds-scanner/` directory is a standalone Python Flask service:
-
-- **Endpoint:** `POST /scan` — accepts a PDF file, returns extracted SDS fields as JSON
-- Supports text-based and scanned PDFs
-- GHS pictogram detection via image matching
-- Field extraction via Groq LLaMA 3.3 70B
-- CORS configured for the Vite dev server
-
----
-
-## Environment Variables Reference
-
-| Variable | Where | Description |
-|----------|-------|-------------|
-| `GROQ_API_KEY` | Cloud Run + local `.env` | Groq API key for AI features |
-| `GOOGLE_CLIENT_ID` | Cloud Run env var | OAuth2 client ID for Google Meet |
-| `GOOGLE_CLIENT_SECRET` | Cloud Run env var | OAuth2 client secret |
-| `GOOGLE_REFRESH_TOKEN` | Cloud Run env var | OAuth2 refresh token (sarnproduction@sarntech.in) |
-| `JWT_SECRET` | Cloud Run env var | Secret key for signing JWT tokens — must be set before deploying auth |
+| Group | Columns |
+|---|---|
+| Record | ReferenceID, WorkflowStatus, CurrentStage, AssignedTo |
+| Common | BusinessEntity, RepositoryNumber, ChemicalProduct, ManufacturerName, RevisionDate, VerificationDate |
+| Search | CompletedBy, CompletedAt, Websearch1/2, Comments1/2, Remarks, StartDate, EndDate, NotPublishable |
+| Supersede | CompletedBy, CompletedAt, NewRepositoryNumber, Date, VerifiedDate, Comments1/2, Remarks |
+| Transcription | CompletedBy, CompletedAt, VerifiedDate, Comments1/2, Remarks |
+| Billing | CompletedBy, CompletedAt, Status |
 
 ---
 
 ## License
 
-This project is proprietary. All rights reserved.
+Private — SARN Technologies. All rights reserved.

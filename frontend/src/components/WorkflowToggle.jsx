@@ -70,7 +70,7 @@ export default function WorkflowToggle() {
 
       {/* Batch */}
       <button
-        disabled={isLocked}
+        disabled={isLocked} 
         onClick={() => navigate("/user/batch/tasks")}
         style={{
           padding: "6px 14px",

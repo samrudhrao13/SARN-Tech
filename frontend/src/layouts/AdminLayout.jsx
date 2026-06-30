@@ -11,7 +11,6 @@ export default function AdminLayout({ children }) {
         display: "flex",
         width: "100%",
         minHeight: "100vh",
-        overflow: "hidden", // 🔒 prevent sidebar shift
       }}
     >
       {/* Sidebar */}
@@ -20,9 +19,9 @@ export default function AdminLayout({ children }) {
       {/* Main Content */}
       <div
         style={{
-          marginLeft: "220px",
+          marginLeft: "230px",
           padding: "28px 30px 30px 16px",
-          width: "calc(100% - 220px)",
+          width: "calc(100% - 230px)",
           minHeight: "100vh",
           background: "#f8fafc",
           boxSizing: "border-box",
