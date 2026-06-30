@@ -17,22 +17,17 @@ export default function SuperAdminDashboard() {
 
   async function loadStats() {
     try {
-      const [usersRes, statusRes] = await Promise.all([
+      const [usersRes, liveRes] = await Promise.all([
         api.get("/users"),
-        api.get("/users/statuses"),
+        api.get("/users/live-count"),
       ]);
       if (usersRes.data.ok) {
         const all = usersRes.data.users;
-        const statuses = statusRes.data.ok ? statusRes.data.statuses : {};
-        const online = all.filter(u => {
-          const s = statuses[u.userId]?.status;
-          return s && s !== "offline";
-        }).length;
         setStats({
           total:  all.length,
           admins: all.filter(u => u.role === "admin").length,
           users:  all.filter(u => u.role === "user").length,
-          online,
+          online: liveRes.data.ok ? liveRes.data.count : 0,
         });
       }
     } catch {}

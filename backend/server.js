@@ -7151,6 +7151,18 @@ app.get("/users/statuses", async (req, res) => {
   } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
 });
 
+// GET /users/live-count → count of users currently logged in today
+app.get("/users/live-count", async (req, res) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const snap = await db.collection("attendance_logs")
+      .where("date", "==", today)
+      .where("status", "==", "IN_PROGRESS")
+      .get();
+    res.json({ ok: true, count: snap.size });
+  } catch (err) { console.error(err); errJson(res, "Something went wrong"); }
+});
+
 // ─────────────────────────────────────────────────────────────────────────────
 // CALL ROOMS
 // ─────────────────────────────────────────────────────────────────────────────
