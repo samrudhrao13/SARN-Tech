@@ -88,13 +88,13 @@ export default function BatchCompleted() {
 
       {/* ── Filters ── */}
       <div style={{ display: "flex", gap: 10, alignItems: "center", marginBottom: 20, flexWrap: "wrap" }}>
-        <label style={{ fontWeight: 600, fontSize: 13, color: "#374151" }}>Sheet:</label>
+        <label style={{ fontWeight: 600, fontSize: 13, color: "#374151" }}>Business:</label>
         <select
           value={sheetFilter}
           onChange={e => handleSheetChange(e.target.value)}
           style={sel}
         >
-          <option value="">All Sheets</option>
+          <option value="">All Businesses</option>
           {sheets.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
 
@@ -124,7 +124,7 @@ export default function BatchCompleted() {
 
       <div style={{ marginBottom: 12, fontWeight: 600, color: "#374151" }}>
         Records Found: {total}
-        {sheetFilter && <span style={{ marginLeft: 10, color: "#6b7280", fontWeight: 400, fontSize: 13 }}>— Sheet: {sheetFilter}</span>}
+        {sheetFilter && <span style={{ marginLeft: 10, color: "#6b7280", fontWeight: 400, fontSize: 13 }}>— Business: {sheetFilter}</span>}
       </div>
 
       {/* ── Table ── */}
@@ -134,7 +134,7 @@ export default function BatchCompleted() {
         <table border="1" width="100%" cellPadding="8" style={{ borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr style={{ background: "#f1f5f9" }}>
-              <th>Sheet</th>
+              <th>Business</th>
               <th>New Repository</th>
               <th>Chemical Name</th>
               <th>Manufacturer</th>

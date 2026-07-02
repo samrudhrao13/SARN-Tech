@@ -13,7 +13,7 @@ export default function Dashboard() {
 
       <div style={grid}>
         <ActionCard
-          title="Upload SDS Sheets"
+          title="Upload SDS Business"
           desc="Upload new SDS Excel files"
           icon="📤"
           color="#2563eb"

@@ -95,13 +95,13 @@ export default function References() {
       <div style={controlCard}>
         <div style={dropRow}>
 
-          <DropGroup label="SDS Sheet">
+          <DropGroup label="SDS Business">
             <select
               value={sheet}
               onChange={(e) => { setSheet(e.target.value); loadReferences(e.target.value, 1); setStats(null); setShowChart(false); }}
               style={dropSel}
             >
-              <option value="">-- Select Sheet --</option>
+              <option value="">-- Select Business --</option>
               {sheets.map((s) => <option key={s} value={s}>{s}</option>)}
             </select>
           </DropGroup>
@@ -202,7 +202,7 @@ export default function References() {
         {loading ? (
           <Empty>Loading...</Empty>
         ) : rows.length === 0 ? (
-          <Empty>{sheet ? "No references found for this sheet." : "Select a sheet above to load references."}</Empty>
+          <Empty>{sheet ? "No references found for this business." : "Select a business above to load references."}</Empty>
         ) : (
           <>
             <table style={{ width: "100%", borderCollapse: "collapse", minWidth: 700 }}>

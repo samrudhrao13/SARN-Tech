@@ -68,7 +68,7 @@ export default function DQReports() {
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 20 }}>
         <div>
           <h2 style={{ margin: 0, fontSize: 22, fontWeight: 700, color: "#0f172a" }}>Data Queue Monitoring</h2>
-          <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 13 }}>User × Business — one row per sheet</p>
+          <p style={{ margin: "4px 0 0", color: "#64748b", fontSize: 13 }}>User × Business — one row per business</p>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
           <button onClick={() => dlSheet("excel")} style={btnSecondary}>⬇ Excel</button>

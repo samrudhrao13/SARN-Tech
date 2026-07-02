@@ -62,7 +62,7 @@ export default function BatchWorkflowControl() {
           }}
           style={sel}
         >
-          <option value="">-- Select Sheet --</option>
+          <option value="">-- Select Business --</option>
           {sheets.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
 
@@ -96,7 +96,7 @@ export default function BatchWorkflowControl() {
         {loading ? (
           <Empty>Loading…</Empty>
         ) : pagedRows.length === 0 ? (
-          <Empty>{sheet ? "No records found for this sheet." : "Select a sheet above to load records."}</Empty>
+          <Empty>{sheet ? "No records found for this business." : "Select a business above to load records."}</Empty>
         ) : (
           <>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>

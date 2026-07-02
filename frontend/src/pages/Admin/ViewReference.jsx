@@ -50,7 +50,7 @@ export default function ViewReference() {
         <h1>Reference Details</h1>
         <p>
           <b>Company:</b> SARN &nbsp;|&nbsp;
-          <b>Sheet:</b> {sheet} &nbsp;|&nbsp;
+          <b>Business:</b> {sheet} &nbsp;|&nbsp;
           <b>Reference ID:</b> {referenceId}
         </p>
 

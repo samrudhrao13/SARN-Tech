@@ -86,7 +86,7 @@ export default function BatchUpload() {
           Batch Upload
         </h1>
         <p style={{ color: "#64748b", fontSize: 14, margin: "6px 0 0" }}>
-          Upload an Excel file to create a new batch sheet in the system.
+          Upload an Excel file to create a new batch business in the system.
         </p>
       </div>
 
@@ -98,9 +98,9 @@ export default function BatchUpload() {
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
-          {/* Sheet Name */}
+          {/* Business Name */}
           <div style={fieldWrap}>
-            <label style={label}>Sheet Name <span style={{ color: "#ef4444" }}>*</span></label>
+            <label style={label}>Business Name <span style={{ color: "#ef4444" }}>*</span></label>
             <input
               type="text"
               placeholder="e.g. APRIL_2025"
@@ -108,7 +108,7 @@ export default function BatchUpload() {
               onChange={e => setSheet(e.target.value.toUpperCase())}
               style={input}
             />
-            <span style={hint}>Will be stored in uppercase</span>
+            <span style={hint}>Business name stored in uppercase</span>
           </div>
 
           {/* Due Date */}
@@ -120,7 +120,7 @@ export default function BatchUpload() {
               onChange={e => setDueDate(e.target.value)}
               style={input}
             />
-            <span style={hint}>Deadline for this batch</span>
+            <span style={hint}>Deadline for this business</span>
           </div>
         </div>
 
@@ -212,20 +212,20 @@ export default function BatchUpload() {
         <div style={cardHeader}>
           <span style={{ fontSize: 18 }}>📋</span>
           <span style={{ fontWeight: 700, fontSize: 15, color: "#0f172a" }}>
-            Available Batch Sheets
+            Available Businesses
           </span>
           <span style={{
             marginLeft: "auto", background: "#eff6ff", color: "#2563eb",
             fontSize: 11, fontWeight: 700, borderRadius: 20, padding: "2px 10px",
             border: "1px solid #bfdbfe",
           }}>
-            {sheets.length} sheet{sheets.length !== 1 ? "s" : ""}
+            {sheets.length} business{sheets.length !== 1 ? "es" : ""}
           </span>
         </div>
 
         {sheets.length === 0 ? (
           <div style={{ textAlign: "center", padding: "32px 0", color: "#94a3b8", fontSize: 14 }}>
-            No batch sheets uploaded yet.
+            No businesses uploaded yet.
           </div>
         ) : (
           <div style={{ display: "flex", flexWrap: "wrap", gap: 8, marginTop: 4 }}>

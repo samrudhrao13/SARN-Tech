@@ -336,7 +336,7 @@ export default function SuperAdminReports() {
 
               <div style={{ display: "flex", gap: 10, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
                 <select value={sdsSheetFilter} onChange={e => { setSdsSheetFilter(e.target.value); setSdsUserFilter(""); }} style={filterSel}>
-                  <option value="">All Sheets</option>
+                  <option value="">All Businesses</option>
                   {sdsSheets.map(s => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
                 </select>
                 <select value={sdsUserFilter} onChange={e => setSdsUserFilter(e.target.value)} style={filterSel}>
@@ -390,7 +390,7 @@ export default function SuperAdminReports() {
 
               <div style={{ display: "flex", gap: 10, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
                 <select value={dqSheetFilter} onChange={e => { setDqSheetFilter(e.target.value); setDqUserFilter(""); }} style={filterSel}>
-                  <option value="">All Sheets</option>
+                  <option value="">All Businesses</option>
                   {dqSheets.map(s => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
                 </select>
                 <select value={dqUserFilter} onChange={e => setDqUserFilter(e.target.value)} style={filterSel}>
@@ -428,7 +428,7 @@ export default function SuperAdminReports() {
 
               <div style={{ display: "flex", gap: 10, marginBottom: 12, alignItems: "center", flexWrap: "wrap" }}>
                 <select value={batchSheetFilter} onChange={e => { setBatchSheetFilter(e.target.value); setBatchUserFilter(""); }} style={filterSel}>
-                  <option value="">All Sheets</option>
+                  <option value="">All Businesses</option>
                   {batchSheets.map(s => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
                 </select>
                 <select value={batchUserFilter} onChange={e => setBatchUserFilter(e.target.value)} style={filterSel}>
@@ -457,7 +457,7 @@ export default function SuperAdminReports() {
             <WorkflowSection title="Consolidated Per User" color="#16a34a">
               <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 12, flexWrap: "wrap" }}>
                 <select value={consolSheetFilter} onChange={e => { setConsolSheetFilter(e.target.value); setConsolUserFilter(""); }} style={filterSel}>
-                  <option value="">All Sheets</option>
+                  <option value="">All Businesses</option>
                   {consolSheets.map(s => <option key={s} value={s}>{s.replace(/_/g, " ")}</option>)}
                 </select>
                 <select value={consolUserFilter} onChange={e => setConsolUserFilter(e.target.value)} style={filterSel}>

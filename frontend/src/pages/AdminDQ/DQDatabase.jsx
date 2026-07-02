@@ -83,7 +83,7 @@ export default function DQDatabase() {
             }}
             style={selectStyle}
           >
-            <option value="">📄 Select DQ Sheet</option>
+            <option value="">📄 Select DQ Business</option>
             {sheets.map(s => (
               <option key={s} value={s}>{s}</option>
             ))}

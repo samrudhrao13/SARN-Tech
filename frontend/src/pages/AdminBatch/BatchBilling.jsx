@@ -94,7 +94,7 @@ export default function BatchBilling() {
           onChange={(e) => setSheet(e.target.value)}
           style={sel}
         >
-          <option value="">Select Sheet</option>
+          <option value="">Select Business</option>
           {sheets.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
 
@@ -126,7 +126,7 @@ export default function BatchBilling() {
         {loading ? (
           <Empty>Loading...</Empty>
         ) : pagedRows.length === 0 ? (
-          <Empty>{rows.length === 0 ? "Select a sheet to view billing records" : "No records match the search."}</Empty>
+          <Empty>{rows.length === 0 ? "Select a business to view billing records" : "No records match the search."}</Empty>
         ) : (
           <>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>

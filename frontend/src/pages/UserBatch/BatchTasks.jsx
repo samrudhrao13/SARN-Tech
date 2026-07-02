@@ -184,7 +184,7 @@ export default function BatchTasks() {
       minWidth: 180,
     }}
   >
-    <option value="">All Sheets</option>
+    <option value="">All Businesses</option>
     {sheets.map(s => (
       <option key={s} value={s}>{s}</option>
     ))}
@@ -256,7 +256,7 @@ export default function BatchTasks() {
                 background: "#f1f5f9",
               }}
             >
-              <th>Sheet</th>
+              <th>Business</th>
               <th>Due Date</th>
               <th>New Repository</th>
 

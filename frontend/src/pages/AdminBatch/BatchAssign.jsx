@@ -107,13 +107,13 @@ export default function BatchAssign() {
       <div style={controlCard}>
         {/* Row 1 — 5 dropdowns side by side */}
         <div style={dropRow}>
-          <DropGroup label="Sheet">
+          <DropGroup label="Business">
             <select
               value={sheet}
               onChange={e => { setSheet(e.target.value); setPage(1); }}
               style={dropSel}
             >
-              <option value="">Select Sheet</option>
+              <option value="">Select Business</option>
               {sheets.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </DropGroup>
@@ -202,7 +202,7 @@ export default function BatchAssign() {
         {loading ? (
           <Empty>Loading records…</Empty>
         ) : pagedRecords.length === 0 ? (
-          <Empty>{records.length === 0 ? "Select a sheet to load records" : "No records match the current filters."}</Empty>
+          <Empty>{records.length === 0 ? "Select a business to load records" : "No records match the current filters."}</Empty>
         ) : (
           <>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>

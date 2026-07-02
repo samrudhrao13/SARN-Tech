@@ -13,7 +13,7 @@ export default function DQDashboard() {
 
       <div style={grid}>
         <ActionCard
-          title="Upload DQ Sheet"
+          title="Upload DQ Business"
           desc="Upload new Data Queue Excel sheets"
           icon="📤"
           color="#2563eb"

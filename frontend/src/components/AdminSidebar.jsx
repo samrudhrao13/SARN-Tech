@@ -53,7 +53,7 @@ export default function AdminSidebar() {
         {process === "SDS" && (
           <>
             <NavBtn label="Dashboard"        path="/admin/dashboard"     active={isActive("/admin/dashboard")} />
-            <NavBtn label="Upload Sheets"    path="/admin/upload"        active={isActive("/admin/upload")} />
+            <NavBtn label="Upload Business"    path="/admin/upload"        active={isActive("/admin/upload")} />
             <NavBtn label="References"       path="/admin/references"    active={isActive("/admin/references")} />
             <NavBtn label="Assign Users"     path="/admin/assign"        active={isActive("/admin/assign")} />
             <NavBtn label="Workflow Control" path="/admin/workflow"      active={isActive("/admin/workflow")} />

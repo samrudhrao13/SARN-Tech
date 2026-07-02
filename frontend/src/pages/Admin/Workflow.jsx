@@ -90,7 +90,7 @@ export default function Workflow() {
       {/* SHEET SELECT */}
       <div style={{ marginBottom: 15 }}>
         <label>
-          <b>Select SDS Sheet</b>
+          <b>Select SDS Business</b>
         </label>
         <select
           value={sheet}
@@ -101,7 +101,7 @@ export default function Workflow() {
           }}
           style={input}
         >
-          <option value="">-- Select Sheet --</option>
+          <option value="">-- Select Business --</option>
           {sheets.map((s) => (
             <option key={s} value={s}>
               {s}

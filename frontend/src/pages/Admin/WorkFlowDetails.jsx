@@ -178,7 +178,7 @@ export default function WorkflowDetails() {
 
       <h1 style={{ margin: "10px 0 4px", fontSize: 20, fontWeight: 700, color: "#0f172a" }}>Workflow Details</h1>
       <p style={{ margin: "0 0 20px", color: "#64748b", fontSize: 13 }}>
-        <b>Sheet:</b> {sheet} &nbsp;|&nbsp; <b>Reference:</b> {referenceId}
+        <b>Business:</b> {sheet} &nbsp;|&nbsp; <b>Reference:</b> {referenceId}
       </p>
 
       <Block title="Common Fields">

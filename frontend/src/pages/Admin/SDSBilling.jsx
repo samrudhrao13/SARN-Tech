@@ -76,7 +76,7 @@ export default function SDSBilling() {
       {/* Controls */}
       <div style={controlsBar}>
         <select value={sheet} onChange={(e) => { setSheet(e.target.value); localStorage.setItem("sarn_admin_sds_bill_sheet", e.target.value); }} style={sel}>
-          <option value="">Select SDS Sheet</option>
+          <option value="">Select SDS Business</option>
           {sheets.map((s) => <option key={s} value={s}>{s}</option>)}
         </select>
         <button onClick={() => loadBilling(1)} style={primaryBtn}>Load</button>
@@ -102,7 +102,7 @@ export default function SDSBilling() {
         {loading ? (
           <Empty>Loading…</Empty>
         ) : filteredRows.length === 0 ? (
-          <Empty>{rows.length === 0 ? "Select a sheet and click Load" : "No records match the selected filter."}</Empty>
+          <Empty>{rows.length === 0 ? "Select a business and click Load" : "No records match the selected filter."}</Empty>
         ) : (
           <>
             <table style={{ width: "100%", borderCollapse: "collapse" }}>

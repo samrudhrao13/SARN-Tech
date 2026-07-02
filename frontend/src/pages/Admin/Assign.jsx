@@ -162,9 +162,9 @@ export default function AdminAssignSDS() {
         {/* Row 1: 5 labeled dropdowns */}
         <div style={dropRow}>
 
-          <DropGroup label="Sheet">
+          <DropGroup label="Business">
             <select value={sheet} onChange={e => setSheet(e.target.value)} style={dropSel}>
-              <option value="">Select Sheet</option>
+              <option value="">Select Business</option>
               {sheets.map(s => <option key={s}>{s}</option>)}
             </select>
           </DropGroup>
@@ -288,7 +288,7 @@ export default function AdminAssignSDS() {
       <div style={tableWrap}>
         {refs.length === 0 ? (
           <div style={emptyState}>
-            {!sheet ? "Select a sheet to load records" : "No records found for the current filters."}
+            {!sheet ? "Select a business to load records" : "No records found for the current filters."}
           </div>
         ) : (
           <>

@@ -92,7 +92,7 @@ export default function AssignedDQWork() {
         <table style={table}>
           <thead>
             <tr>
-              <th style={th}>Sheet</th>
+              <th style={th}>Business</th>
               <th style={th}>Due Date</th>
               <th style={th}>Repo ID</th>
               <th style={th}>Status</th>

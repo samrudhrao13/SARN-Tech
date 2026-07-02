@@ -98,9 +98,9 @@ export default function DQAssign() {
 
         {/* Row 1: Dropdowns */}
         <div style={dropRow}>
-          <DropGroup label="Sheet">
+          <DropGroup label="Business">
             <select value={sheet} onChange={e => { setSheet(e.target.value); setPage(1); }} style={dropSel}>
-              <option value="">Select Sheet</option>
+              <option value="">Select Business</option>
               {sheets.map(s => <option key={s}>{s}</option>)}
             </select>
           </DropGroup>
@@ -144,7 +144,7 @@ export default function DQAssign() {
       <div style={tableWrap}>
         {repos.length === 0 ? (
           <div style={emptyState}>
-            {!sheet ? "Select a sheet to load records" : "No records found."}
+            {!sheet ? "Select a business to load records" : "No records found."}
           </div>
         ) : (
           <>

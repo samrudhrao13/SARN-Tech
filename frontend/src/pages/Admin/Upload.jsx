@@ -79,7 +79,7 @@ export default function Upload() {
           Upload SDS Excel
         </h1>
         <p style={{ color: "#64748b", fontSize: 14, margin: "6px 0 0" }}>
-          Upload an Excel file to create or update an SDS sheet in the system.
+          Upload an Excel file to create or update an SDS business in the system.
         </p>
       </div>
 
@@ -87,13 +87,13 @@ export default function Upload() {
       <div style={card}>
         <div style={cardHeader}>
           <span style={{ fontSize: 18 }}>📤</span>
-          <span style={{ fontWeight: 700, fontSize: 15, color: "#0f172a" }}>Upload New SDS Sheet</span>
+          <span style={{ fontWeight: 700, fontSize: 15, color: "#0f172a" }}>Upload New SDS Business</span>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
           {/* Sheet Name */}
           <div style={fieldWrap}>
-            <label style={labelStyle}>SDS Sheet Name <span style={{ color: "#ef4444" }}>*</span></label>
+            <label style={labelStyle}>SDS Business Name <span style={{ color: "#ef4444" }}>*</span></label>
             <input
               type="text"
               placeholder="e.g. MASTER_SDS_JAN"
@@ -113,7 +113,7 @@ export default function Upload() {
               onChange={e => setDueDate(e.target.value)}
               style={inputStyle}
             />
-            <span style={hint}>Deadline for this sheet</span>
+            <span style={hint}>Deadline for this business</span>
           </div>
         </div>
 

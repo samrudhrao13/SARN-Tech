@@ -109,7 +109,7 @@ export default function AssignedSDSWork() {
   value={sheetFilter}
   onChange={(e) => { setSheetFilter(e.target.value); localStorage.setItem("sarn_sds_sheet", e.target.value); }}
 >
-    <option value="">All Sheets</option>
+    <option value="">All Businesses</option>
     {[...new Set(tasks.map(t => t.sheet))].map(s => (
       <option key={s} value={s}>
         {s}
@@ -169,7 +169,7 @@ export default function AssignedSDSWork() {
             <tr>
               <th style={th}>Reference ID</th>
               <th style={th}>Company</th>
-              <th style={th}>Sheet</th>
+              <th style={th}>Business</th>
               <th style={th}>Due Date</th>
               <th style={th}>Stage</th>
               <th style={th}>Status</th>

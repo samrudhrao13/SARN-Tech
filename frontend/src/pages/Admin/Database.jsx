@@ -85,7 +85,7 @@ export default function SDSDatabase() {
           }}
           style={input}
         >
-          <option value="">Select SDS Sheet</option>
+          <option value="">Select SDS Business</option>
           {sheets.map(s => (
             <option key={s} value={s}>{s}</option>
           ))}

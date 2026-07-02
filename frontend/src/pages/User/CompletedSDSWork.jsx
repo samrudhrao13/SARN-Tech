@@ -66,9 +66,9 @@ export default function CompletedSDSWork() {
 
       {/* ── Filters ── */}
       <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 20, flexWrap: "wrap" }}>
-        <label style={lbl}>Sheet:</label>
+        <label style={lbl}>Business:</label>
         <select style={filterInput} value={sheetFilter} onChange={e => handleSheetChange(e.target.value)}>
-          <option value="">All Sheets</option>
+          <option value="">All Businesses</option>
           {sheets.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
 
@@ -98,7 +98,7 @@ export default function CompletedSDSWork() {
             <tr>
               <th style={th}>Reference ID</th>
               <th style={th}>Company</th>
-              <th style={th}>Sheet</th>
+              <th style={th}>Business</th>
               <th style={th}>Stage</th>
               <th style={th}>Status</th>
               <th style={th}>Action</th>

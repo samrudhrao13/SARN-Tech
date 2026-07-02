@@ -76,7 +76,7 @@ export default function BatchDatabase() {
             }}
             style={sel}
           >
-            <option value="">Select Sheet</option>
+            <option value="">Select Business</option>
             {sheets.map(s => <option key={s} value={s}>{s}</option>)}
           </select>
 
@@ -132,7 +132,7 @@ export default function BatchDatabase() {
         {loading ? (
           <Empty>Loading records…</Empty>
         ) : !sheet ? (
-          <Empty>Select a batch sheet above to view data.</Empty>
+          <Empty>Select a business above to view data.</Empty>
         ) : paged.length === 0 ? (
           <Empty>No records match the current filters.</Empty>
         ) : (

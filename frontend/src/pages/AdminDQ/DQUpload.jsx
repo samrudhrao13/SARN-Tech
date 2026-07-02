@@ -76,7 +76,7 @@ export default function DQUpload() {
           Upload DQ Excel
         </h1>
         <p style={{ color: "#64748b", fontSize: 14, margin: "6px 0 0" }}>
-          Upload an Excel file to create a new Data Queue sheet in the system.
+          Upload an Excel file to create a new Data Queue business in the system.
         </p>
       </div>
 
@@ -84,13 +84,13 @@ export default function DQUpload() {
       <div style={card}>
         <div style={cardHeader}>
           <span style={{ fontSize: 18 }}>📤</span>
-          <span style={{ fontWeight: 700, fontSize: 15, color: "#0f172a" }}>Upload New DQ Sheet</span>
+          <span style={{ fontWeight: 700, fontSize: 15, color: "#0f172a" }}>Upload New DQ Business</span>
         </div>
 
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 16 }}>
           {/* Sheet Name */}
           <div style={fieldWrap}>
-            <label style={labelStyle}>DQ Sheet Name <span style={{ color: "#ef4444" }}>*</span></label>
+            <label style={labelStyle}>DQ Business Name <span style={{ color: "#ef4444" }}>*</span></label>
             <input
               type="text"
               placeholder="e.g. DQ_MASTER_JAN"
@@ -110,7 +110,7 @@ export default function DQUpload() {
               onChange={e => setDueDate(e.target.value)}
               style={inputStyle}
             />
-            <span style={hint}>Deadline for this DQ sheet</span>
+            <span style={hint}>Deadline for this DQ business</span>
           </div>
         </div>
 

@@ -60,9 +60,9 @@ export default function CompletedDQWork() {
 
       {/* ── Filters ── */}
       <div style={{ display: "flex", gap: 12, marginBottom: 16, alignItems: "center", flexWrap: "wrap" }}>
-        <label style={lbl}>Sheet:</label>
+        <label style={lbl}>Business:</label>
         <select style={inp} value={sheetFilter} onChange={e => handleSheetChange(e.target.value)}>
-          <option value="">All Sheets</option>
+          <option value="">All Businesses</option>
           {sheets.map(s => <option key={s} value={s}>{s}</option>)}
         </select>
 
@@ -91,7 +91,7 @@ export default function CompletedDQWork() {
         <table style={table}>
           <thead>
             <tr>
-              <th style={th}>Sheet</th>
+              <th style={th}>Business</th>
               <th style={th}>Repo ID</th>
               <th style={th}>Status</th>
               <th style={th}>Date Verified</th>
