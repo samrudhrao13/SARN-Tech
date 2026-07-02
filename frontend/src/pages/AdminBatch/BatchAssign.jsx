@@ -93,6 +93,8 @@ export default function BatchAssign() {
     filteredRecords = filteredRecords.filter(r => r.duplicate);
   if (duplicateFilter === "normal")
     filteredRecords = filteredRecords.filter(r => !r.duplicate);
+  if (duplicateFilter === "billingReady")
+    filteredRecords = filteredRecords.filter(r => r.status === "BILLING_READY");
 
   const totalPages   = Math.max(1, Math.ceil(filteredRecords.length / PAGE_SIZE));
   const pagedRecords = filteredRecords.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
@@ -160,6 +162,7 @@ export default function BatchAssign() {
               <option value="all">All Records</option>
               <option value="duplicates">Duplicates Only</option>
               <option value="normal">Non-Duplicates</option>
+              <option value="billingReady">Billing Ready</option>
             </select>
           </DropGroup>
         </div>
